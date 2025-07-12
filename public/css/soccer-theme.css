@@ -1,0 +1,59 @@
+/* Enhanced styles for a modern look */
+body, .card {
+    background-image: url('/img/foot-background.png'); /* Unchanged background image */
+    color: white; /* Unchanged text color for contrast */
+}
+/* Custom CSS for AdminLTE */
+
+/* Make specific sidebar menu items non-clickable */
+.nav-sidebar .nav-item > a.non-clickable-indicator.nav-link {
+    cursor: default !important; /* Change mouse cursor to default */
+    pointer-events: none !important; /* Disable all mouse events, including click */
+}
+
+/* Optional: If you want to remove hover effects that AdminLTE might still apply visually */
+.nav-sidebar .nav-item > a.non-clickable-indicator.nav-link:hover {
+    background-color: transparent !important; /* Or match your sidebar's item background */
+    /* color: inherit !important; /* Or ensure it uses the standard text color if hover changes it */
+}
+.card {
+    border: none; /* Remove border for a cleaner look */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.25); /* Subtle shadow */
+    background: linear-gradient(to left, #ffffff, rgb(0 139 255 / 15%));
+    padding: 20px; /* Padding inside the card for spacing */
+}
+
+.form-control, .btn {
+    border-radius: 4px; /* Slightly rounded corners for modern look */
+}
+
+.btn-primary {
+    background-color: #007BFF; /* Brighter blue for better visibility */
+    border-color: #0056b3; /* Matching border color */
+    color: white; /* Ensure text is white for visibility */
+}
+
+.btn-link {
+    color: #80bfff; /* Lighter blue for a softer look */
+    text-decoration: none; /* Removing underline for a cleaner look */
+    opacity: 0.8;
+}
+
+.invalid-feedback {
+    background-color: #ffcccc; /* Light red background for error messages */
+    border-radius: 4px; /* Rounded corners for error box */
+    padding: 5px;
+}
+
+/* Additional styling to center the login form and adjust spacing */
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh; /* Full viewport height */
+    margin: 0 auto; /* Centering the container */
+}
+
+input {
+    /* background-color: wheat; */
+}
