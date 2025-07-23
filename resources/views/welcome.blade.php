@@ -53,7 +53,7 @@
                 </div>
                 <div class="card-body text-center">
                     <h2 class="display-4 font-weight-bold">${{ number_format($poolPrize, 2) }}</h2>
-                    <p class="text-muted">Winner takes all!!</p>
+                    <p class="text-muted">Winner takes all!</p>
                 </div>
             </div>
 
