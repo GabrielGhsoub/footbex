@@ -19,15 +19,11 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Schedules the command to run once per day at midnight
         $schedule->command('bets:settle-weekly')
-                //  every 1minute
-                ->everySecond(5) // Adjust as needed, e.g. every 1 minute
-                 ->withoutOverlapping()
-                 ->runInBackground(); // If it's a long process
-        
-        // Consider clearing football-data.org cache periodically if stale data is an issue
-        // $schedule->command('cache:clear --tags=football-data-api')->daily(); // Example if you use tagged cache
+                ->daily()
+                ->withoutOverlapping()
+                ->runInBackground();
     }
 
     /**
