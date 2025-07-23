@@ -35,7 +35,7 @@ class ProfileController extends Controller
             // Update user information
             $user->update($data);
     
-            return redirect()->route('profile')->with('success', 'Profile updated successfully.');
+            return redirect()->route('profile.show')->with('success', 'Profile updated successfully.');
         } catch (\Illuminate\Validation\ValidationException $e) {
             \Log::error('Validation error: ' . $e->getMessage());
             return redirect()->back()->withErrors($e->errors())->withInput();
