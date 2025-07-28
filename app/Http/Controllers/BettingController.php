@@ -5,13 +5,17 @@ namespace App\Http\Controllers;
 use App\Models\WeeklyBetSlip;
 use App\Models\WeeklyBetPrediction;
 use App\Services\FootballDataService;
-use Illuminate\Http\Request; // Keep Request for potential future use, though not for test_date now
+use App\Http\Controllers\Traits\ProvidesEffectiveTime;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Illuminate\Validation\ValidationException;
 
 class BettingController extends Controller
 {
+    use ProvidesEffectiveTime;
+
     protected FootballDataService $footballDataService;
 
     public function __construct(FootballDataService $footballDataService)
@@ -21,258 +25,209 @@ class BettingController extends Controller
     }
 
     /**
-     * Defines the "current" time for testing purposes.
-     * Change the $testDateTimeString to simulate different moments.
-     * Set to null or empty to use the real current time.
-     */
-    private function getEffectiveTime(): Carbon
-    {
-        // --- !!! EDIT THIS LINE FOR TESTING !!! ---
-        // Examples:
-        // $testDateTimeString = '2025-05-19T17:00:00Z'; // To test *before* a typical Monday 18:30 match
-        // $testDateTimeString = '2025-05-19T20:00:00Z'; // To test *after* a typical Monday 18:30 match
-        // $testDateTimeString = '2025-05-25T23:59:59Z'; // To test end of week
-        // $testDateTimeString = null; // Set to a date string like 'YYYY-MM-DDTHH:MM:SSZ' or null
-        $testDateTimeString = '2025-03-09T23:59:59Z';
-
-        if (!empty($testDateTimeString) && app()->environment('local', 'testing')) { // Only allow in local/testing
-            try {
-                // Ensure it's parsed and then set to the application's configured timezone
-                // If your string includes 'Z', Carbon parses it as UTC.
-                // Then convert to app's timezone for consistent internal logic,
-                // but comparisons with API's UTC dates will need to be UTC-aware.
-                return Carbon::parse($testDateTimeString)->setTimezone(config('app.timezone'));
-            } catch (\Exception $e) {
-                Log::warning('Invalid testDateTimeString for getEffectiveTime: ' . $testDateTimeString . '. Defaulting to Carbon::now(). Error: ' . $e->getMessage());
-            }
-        }
-        return Carbon::now(); // Defaults to real current time
-    }
-
-
-    /**
-     * Helper function to determine the first match UTC time from a list of matches.
-     */
-    private function getFirstMatchUtcFromMatches(array $matches): ?Carbon
-    {
-        $firstMatchUtc = null;
-        if (empty($matches)) {
-            return null;
-        }
-
-        foreach ($matches as $match) {
-            if (isset($match['utcDate'])) {
-                try {
-                    // API provides dates like "2025-05-01T18:30:00Z", Carbon::parse handles 'Z' as UTC
-                    $matchTime = Carbon::parse($match['utcDate']); // This will be a UTC Carbon instance
-                    if ($firstMatchUtc === null || $matchTime->lt($firstMatchUtc)) {
-                        $firstMatchUtc = $matchTime;
-                    }
-                } catch (\Exception $e) {
-                    Log::error("Error parsing utcDate for match: " . ($match['id'] ?? 'N/A'), ['date' => $match['utcDate'], 'error' => $e->getMessage()]);
-                    continue;
-                }
-            }
-        }
-        return $firstMatchUtc; // Returns a Carbon instance in UTC, or null
-    }
-
-    /**
      * Show the form for placing bets on the current week's matches.
+     * Each match will be checked individually to see if it's still bettable.
      */
     public function showCurrentWeekBetForm()
     {
         $user = Auth::user();
         $effectiveNow = $this->getEffectiveTime();
+        $effectiveNowUtc = $effectiveNow->copy()->setTimezone('UTC');
 
-        // The "betting week" is defined as 1 week prior to the effective "now"
-        $bettingWeekReferenceDate = $effectiveNow->copy()->subWeeks(1);
+        $bettingWeekReferenceDate = $effectiveNow->copy();
         $bettingWeekIdentifier = $bettingWeekReferenceDate->format('o-W');
 
-        Log::info("BettingController: showCurrentWeekBetForm", [
-            'effectiveNow' => $effectiveNow->toDateTimeString(),
-            'bettingWeekForSlipIdentifier' => $bettingWeekIdentifier,
-        ]);
-
-        // FootballDataService ALWAYS fetches based on Carbon::now()->subWeeks(1) (actual server time)
-        $matchesResponse = $this->footballDataService->getWeeklyMatches();
+        $matchesResponse = $this->footballDataService->getWeeklyMatches($bettingWeekReferenceDate);
 
         if (!$matchesResponse['success'] || empty($matchesResponse['data'])) {
             return view('betting.weekly_bet_form', [
                 'matches' => [],
-                'bettingOpen' => false,
-                'message' => $matchesResponse['message'] ?? 'No matches available for the current betting period, or an error occurred fetching data.',
+                'anyMatchBettable' => false,
+                'message' => $matchesResponse['message'] ?? 'No matches available for the current betting period.',
                 'existingSlip' => null,
-                'firstMatchTime' => null,
-                'currentTime' => $effectiveNow, // Use effectiveNow for display consistency
-                'weekIdentifier' => $bettingWeekIdentifier, // This is for the slip being created/viewed
+                'currentTime' => $effectiveNow,
+                'weekIdentifier' => $bettingWeekIdentifier,
             ]);
         }
 
         $matches = $matchesResponse['data'];
-        $firstMatchUtc = $this->getFirstMatchUtcFromMatches($matches); // This is UTC
-
-        $bettingOpen = true;
-        $message = null;
-
-        if ($firstMatchUtc === null) {
-            $bettingOpen = false;
-            $message = 'Match schedule details are incomplete. Betting is currently unavailable.';
-            Log::warning("BettingController: No firstMatchUtc could be determined for matches fetched (week ID based on service: " . Carbon::now()->subWeeks(1)->format('o-W') . ").");
-        } elseif ($effectiveNow->copy()->setTimezone('UTC')->gte($firstMatchUtc)) {
-            // Compare effectiveNow (converted to UTC) with firstMatchUtc (already UTC)
-            $bettingOpen = false;
-            $message = 'The betting window for this week has closed. (Effective time: ' . $effectiveNow->toDateTimeString() . ' vs First Match UTC: ' . $firstMatchUtc->toDateTimeString() . ')';
-            Log::info("Betting window closed.", ['effectiveNow_utc' => $effectiveNow->copy()->setTimezone('UTC')->toIso8601String(), 'firstMatchUtc' => $firstMatchUtc->toIso8601String()]);
-        }
+        $anyMatchBettable = false;
 
         $existingSlip = WeeklyBetSlip::where('user_id', $user->id)
-            ->where('week_identifier', $bettingWeekIdentifier) // Check for slip related to the "effective" week
+            ->where('week_identifier', $bettingWeekIdentifier)
             ->with('predictions')
             ->first();
+        
+        // Create a simple collection of match IDs that already have a prediction for quick lookups.
+        $existingPredictionIds = $existingSlip ? $existingSlip->predictions->pluck('match_id') : collect();
 
-        if ($existingSlip && $existingSlip->is_submitted) {
-            $bettingOpen = false;
-            if (is_null($message)) {
-                $message = 'You have already submitted your predictions for this (effective) week: ' . $bettingWeekIdentifier;
+        // Process each match to determine if it's individually bettable
+        foreach ($matches as $key => $match) {
+            try {
+                $matchTimeUtc = Carbon::parse($match['utcDate']);
+                $deadline = $matchTimeUtc->copy()->subHour();
+                
+                // Condition 1: Is the betting window open based on time?
+                $isTimeBettable = $effectiveNowUtc->lt($deadline);
+                // Condition 2: Has the user already placed a bet on this match?
+                $hasExistingBet = $existingPredictionIds->contains($match['id']);
+
+                // A match is bettable ONLY if the time window is open AND no bet has been placed yet.
+                $matches[$key]['is_bettable'] = $isTimeBettable && !$hasExistingBet;
+
+                if ($matches[$key]['is_bettable']) {
+                    $anyMatchBettable = true;
+                }
+            } catch (\Exception $e) {
+                Log::error("Error processing match deadline for match ID {$match['id']}", ['error' => $e->getMessage()]);
+                $matches[$key]['is_bettable'] = false;
             }
         }
         
-        if (!empty($matches)) {
-            usort($matches, function ($a, $b) {
-                if (!isset($a['utcDate']) || !isset($b['utcDate'])) return 0;
-                return strcmp($a['utcDate'], $b['utcDate']);
-            });
+        usort($matches, fn($a, $b) => strcmp($a['utcDate'], $b['utcDate']));
+            
+        $message = null;
+        if (!$anyMatchBettable && !empty($matches)) {
+             $message = 'The betting window for all available matches this week has closed, or you have already placed all your bets.';
         }
 
         return view('betting.weekly_bet_form', [
-            'matches' => $matches, // Matches are from FootballDataService (actual_now - 1 week)
-            'bettingOpen' => $bettingOpen,
+            'matches' => $matches,
+            'anyMatchBettable' => $anyMatchBettable,
             'message' => $message,
             'existingSlip' => $existingSlip,
-            'weekIdentifier' => $bettingWeekIdentifier, // Identifier for the slip being managed
-            'firstMatchTime' => $firstMatchUtc, 
+            'weekIdentifier' => $bettingWeekIdentifier,
             'currentTime' => $effectiveNow
         ]);
     }
 
     /**
-     * Store the weekly bet predictions.
+     * Store weekly bet predictions. A bet for a specific match is now permanent once made.
+     * This functions as a "Save" for new, un-betted matches only.
      */
-    public function storeCurrentWeekBet(Request $request) // Added Request back
+    public function storeCurrentWeekBet(Request $request)
     {
         $user = Auth::user();
         $effectiveNow = $this->getEffectiveTime();
+        $effectiveNowUtc = $effectiveNow->copy()->setTimezone('UTC');
 
-        $bettingWeekReferenceDate = $effectiveNow->copy()->subWeeks(1);
+        $bettingWeekReferenceDate = $effectiveNow->copy();
         $bettingWeekIdentifier = $bettingWeekReferenceDate->format('o-W');
 
-        Log::info("User {$user->id} attempting to store weekly bet for effective week {$bettingWeekIdentifier}", [
-            'effectiveNow' => $effectiveNow->toDateTimeString(),
-            'request_data' => $request->all()
+        Log::debug('--- Begin Bet Submission ---', [
+            'user_id' => $user->id,
+            'effective_time_utc' => $effectiveNowUtc->toIso8601String(),
+            'week_identifier' => $bettingWeekIdentifier,
+            'payload' => $request->all(),
         ]);
 
-        // Fetch matches again - service uses actual Carbon::now()->subWeeks(1)
-        $matchesResponse = $this->footballDataService->getWeeklyMatches();
-        
-        if (!$matchesResponse['success'] || empty($matchesResponse['data'])) {
-            Log::warning("User {$user->id} submission failed: No matches found by service for store attempt.");
-            return redirect()->route('betting.show_form')->with('error', 'Could not retrieve match data. Please try again.');
-        }
+        $submittedPredictions = $request->input('predictions', []);
+        $completePredictions = collect($submittedPredictions)->filter(function ($prediction) {
+            return isset($prediction['match_id']) && isset($prediction['outcome']);
+        })->values()->all();
 
-        $firstMatchUtc = $this->getFirstMatchUtcFromMatches($matchesResponse['data']); // This is UTC
+        Log::debug('Filtered complete predictions from payload.', ['complete_predictions' => $completePredictions]);
 
-        if ($firstMatchUtc === null) {
-            Log::warning("User {$user->id} submission failed: Could not determine first match time during store.");
-            return redirect()->route('betting.show_form')->with('error', 'Match schedule details are incomplete. Cannot save predictions.');
-        }
-
-        // Compare effectiveNow (converted to UTC) with firstMatchUtc (already UTC)
-        if ($effectiveNow->copy()->setTimezone('UTC')->gte($firstMatchUtc)) {
-            Log::warning("User {$user->id} submission failed: Betting window closed for matches. Effective: {$effectiveNow->setTimezone('UTC')->toDateTimeString()} UTC, Deadline: {$firstMatchUtc->toDateTimeString()} UTC");
-            return redirect()->route('betting.show_form')->with('error', 'The betting window has closed. Predictions not saved.');
-        }
-
-        $existingSlip = WeeklyBetSlip::where('user_id', $user->id)
-            ->where('week_identifier', $bettingWeekIdentifier) // Check for slip related to the "effective" week
-            ->first();
-
-        if ($existingSlip && $existingSlip->is_submitted) {
-            Log::warning("User {$user->id} submission failed: Already submitted for effective week {$bettingWeekIdentifier}");
-            return redirect()->route('betting.show_form')->with('error', 'You have already submitted your predictions for this week period.');
-        }
-
+        $request->merge(['predictions' => $completePredictions]);
         $request->validate([
-            'predictions' => 'required|array',
+            'predictions' => 'sometimes|array',
             'predictions.*.match_id' => 'required|integer',
             'predictions.*.outcome' => 'required|in:home_win,draw,away_win',
         ]);
-        
-        $submittedPredictions = $request->input('predictions');
-        $apiMatchIds = array_column($matchesResponse['data'], 'id');
-        
-        if (count($submittedPredictions) !== count($apiMatchIds)) {
-            Log::warning("User {$user->id} submission failed: Prediction count mismatch for effective week {$bettingWeekIdentifier}. Expected: " . count($apiMatchIds) . ", Got: " . count($submittedPredictions));
-            return redirect()->back()->withInput()->with('error', 'Please make a prediction for every match shown.');
+
+        if (empty($completePredictions)) {
+            Log::warning('Submission failed: No complete predictions were submitted.');
+            return redirect()->back()->with('error', 'You did not select an outcome for any match.');
         }
 
-        $slip = $existingSlip ?? new WeeklyBetSlip();
-        $slip->user_id = $user->id;
-        $slip->week_identifier = $bettingWeekIdentifier; // Use identifier from effective time
-        $slip->betting_closes_at = $firstMatchUtc; // Store actual deadline of matches in UTC
-        $slip->is_submitted = true;
-        $slip->status = 'submitted';
-        $slip->save();
-
-        Log::info("User {$user->id} saved WeeklyBetSlip ID {$slip->id} for effective week {$bettingWeekIdentifier}");
-
-        if ($existingSlip && !$existingSlip->is_submitted) {
-            $slip->predictions()->delete();
+        $matchesResponse = $this->footballDataService->getWeeklyMatches($bettingWeekReferenceDate);
+        if (!$matchesResponse['success'] || empty($matchesResponse['data'])) {
+            Log::error('Submission failed: Could not retrieve match data from FootballDataService.');
+            return redirect()->route('betting.show_form')->with('error', 'Could not retrieve match data to validate predictions. Please try again.');
         }
+
+        $allWeeklyMatches = collect($matchesResponse['data']);
+        $matchTimes = $allWeeklyMatches->keyBy('id')->map(fn($match) => $match['utcDate']);
         
-        $predictionsToSave = [];
-        foreach ($submittedPredictions as $predictionData) {
-            $matchDetail = null;
-            foreach ($matchesResponse['data'] as $m) {
-                if ($m['id'] == $predictionData['match_id']) {
-                    $matchDetail = $m;
-                    break;
-                }
+        $slip = WeeklyBetSlip::firstOrCreate(
+            ['user_id' => $user->id, 'week_identifier' => $bettingWeekIdentifier],
+            ['status' => 'open', 'is_submitted' => false]
+        );
+
+        // Fetch all existing predictions for this slip upfront to prevent multiple queries.
+        $existingPredictions = $slip->predictions->keyBy('match_id');
+
+        $predictionsSavedCount = 0;
+        $lockedMatchesAttempted = [];
+
+        Log::debug('Processing submitted predictions...', ['count' => count($completePredictions)]);
+        foreach ($completePredictions as $predictionData) {
+            $matchId = $predictionData['match_id'];
+
+            if (!$matchTimes->has($matchId)) {
+                Log::warning("Skipping prediction: Match ID {$matchId} not found in this week's match set.", ['user_id' => $user->id]);
+                continue;
             }
 
-            if (!$matchDetail || !isset($matchDetail['utcDate'], $matchDetail['home']['name'], $matchDetail['away']['name'])) {
-                Log::error("Match ID {$predictionData['match_id']} (or details) submitted by user {$user->id} not found or incomplete. Slip ID {$slip->id}. Reverting.", ['detail' => $matchDetail]);
-                $slip->is_submitted = false; $slip->status = 'open'; $slip->save();
-                WeeklyBetPrediction::where('weekly_bet_slip_id', $slip->id)->delete(); // Clean up
-                return redirect()->back()->withInput()->with('error', 'A problem occurred with match data. Please refresh and try again.');
-            }
-            
-            if(!in_array($predictionData['match_id'], $apiMatchIds)) {
-                 return redirect()->back()->withInput()->with('error', 'Invalid match ID submitted. Please refresh and try again.');
-            }
+            $matchTimeUtc = Carbon::parse($matchTimes->get($matchId));
+            $deadline = $matchTimeUtc->copy()->subHour();
 
-            $predictionsToSave[] = new WeeklyBetPrediction([
-                'match_id' => $predictionData['match_id'],
-                'home_team_name' => $matchDetail['home']['name'],
-                'away_team_name' => $matchDetail['away']['name'],
-                'predicted_outcome' => $predictionData['outcome'],
-                'match_utc_date_time' => Carbon::parse($matchDetail['utcDate'])->setTimezone('UTC'), // Store as UTC
+            $isTimeLocked = $effectiveNowUtc->gte($deadline);
+            $isAlreadyBet = $existingPredictions->has($matchId);
+
+            Log::debug("Checking lock status for Match ID {$matchId}", [
+                'is_time_locked' => $isTimeLocked,
+                'is_already_bet' => $isAlreadyBet,
             ]);
+
+            // Save a prediction only if the match is NOT time-locked AND NOT already bet on.
+            if (!$isTimeLocked && !$isAlreadyBet) {
+                $matchDetail = $allWeeklyMatches->firstWhere('id', $matchId);
+                WeeklyBetPrediction::create([
+                    'weekly_bet_slip_id' => $slip->id,
+                    'match_id' => $matchId,
+                    'home_team_name' => $matchDetail['home']['name'],
+                    'away_team_name' => $matchDetail['away']['name'],
+                    'predicted_outcome' => $predictionData['outcome'],
+                    'match_utc_date_time' => $matchTimeUtc,
+                ]);
+                $predictionsSavedCount++;
+                Log::info("Prediction for Match ID {$matchId} was VALID and CREATED.", ['user_id' => $user->id]);
+            } else {
+                // Match is locked (either by time or because a bet already exists)
+                $matchDetails = $allWeeklyMatches->firstWhere('id', $matchId);
+                $lockedMatchesAttempted[] = ($matchDetails['home']['name'] ?? 'Team') . ' vs ' . ($matchDetails['away']['name'] ?? 'Team');
+                $reason = $isTimeLocked ? 'deadline passed' : 'already bet on';
+                Log::warning("Prediction for Match ID {$matchId} was REJECTED ({$reason}).", ['user_id' => $user->id]);
+            }
+        }
+
+        Log::debug('Finished processing predictions.', [
+            'valid_predictions_saved' => $predictionsSavedCount,
+            'locked_matches_attempted' => $lockedMatchesAttempted,
+        ]);
+
+        if ($predictionsSavedCount === 0 && !empty($lockedMatchesAttempted)) {
+            $errorMessage = 'No new predictions were saved. The betting window for your selected matches has closed or you have already placed a bet on them.';
+            if (!empty($lockedMatchesAttempted)) {
+                 $errorMessage .= ' (' . implode(', ', array_unique($lockedMatchesAttempted)) . ')';
+            }
+            Log::error('Submission failed: No valid predictions to save.', ['user_id' => $user->id, 'error' => $errorMessage]);
+            return redirect()->back()->withInput()->with('error', $errorMessage);
         }
         
-        if (empty($predictionsToSave) || count($predictionsToSave) !== count($apiMatchIds) ) {
-             Log::warning("User {$user->id} - Not enough valid predictions to save for slip ID {$slip->id}. Required: ".count($apiMatchIds).", Got: ".count($predictionsToSave));
-             $slip->is_submitted = false; $slip->status = 'open'; $slip->save();
-             if (!$existingSlip) { 
-                WeeklyBetPrediction::where('weekly_bet_slip_id', $slip->id)->delete();
-             }
-             return redirect()->back()->withInput()->with('error', 'Not all predictions were processed correctly. Please try again.');
+        if ($predictionsSavedCount === 0 && empty($lockedMatchesAttempted)) {
+             return redirect()->back()->withInput()->with('error', 'You did not make any new predictions.');
         }
 
-        $slip->predictions()->saveMany($predictionsToSave);
-        Log::info("User {$user->id} saved " . count($predictionsToSave) . " predictions for WeeklyBetSlip ID {$slip->id}");
+        $successMessage = "Successfully saved {$predictionsSavedCount} new prediction(s)!";
+        if (!empty($lockedMatchesAttempted)) {
+            $successMessage .= ' Note: Predictions for some matches were ignored as they are now locked (' . implode(', ', array_unique($lockedMatchesAttempted)) . ').';
+        }
 
-        return redirect()->route('betting.my_bets')->with('status', 'Your weekly predictions have been submitted successfully!');
+        Log::info('Submission successful.', ['user_id' => $user->id, 'message' => $successMessage]);
+        Log::debug('--- End Bet Submission ---');
+        return redirect()->route('betting.show_form')->with('status', $successMessage);
     }
 
     /**
@@ -281,18 +236,13 @@ class BettingController extends Controller
     public function myBets()
     {
         $user = Auth::user();
-        // $effectiveNow = $this->getEffectiveTime(); // Could be used if 'My Bets' display logic needs it
-
         $slips = WeeklyBetSlip::where('user_id', $user->id)
-            ->with(['predictions' => function ($query) {
-                $query->orderBy('match_utc_date_time', 'asc');
-            }])
+            ->with(['predictions' => fn($query) => $query->orderBy('match_utc_date_time', 'asc')])
             ->orderBy('created_at', 'desc')
             ->paginate(10);
 
         return view('betting.my_weekly_bets', [
             'slips' => $slips,
-            // 'currentTime' => $effectiveNow // If you want to pass the effective time to this view
         ]);
     }
 }

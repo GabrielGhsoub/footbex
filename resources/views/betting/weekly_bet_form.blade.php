@@ -12,14 +12,7 @@
             <h3 class="card-title mb-1 mb-md-0">
                 <i class="fas fa-calendar-week mr-2"></i>Week: {{ $weekIdentifier ?? 'N/A' }}
             </h3>
-            @if($firstMatchTime)
-            <div class="card-tools">
-                <span class="badge badge-info mr-1"><i class="far fa-clock mr-1"></i>Closes: {{ $firstMatchTime->setTimezone(config('app.timezone', 'UTC'))->format('D, M j H:i T') }}</span>
-                <span class="badge {{ $currentTime->lt($firstMatchTime) ? 'badge-success' : 'badge-danger' }}">
-                    {{ $currentTime->lt($firstMatchTime) ? 'Open' : 'Closed' }}
-                </span>
-            </div>
-            @endif
+            {{-- The old header with a single open/close status is removed, as it's now per-match --}}
         </div>
         <div class="card-body">
             {{-- Session Messages --}}
@@ -40,7 +33,8 @@
             @endif
 
             {{-- Main Betting Form --}}
-            @if ($bettingOpen && !empty($matches))
+            {{-- Show the form only if there are matches and at least one is bettable --}}
+            @if ($anyMatchBettable && !$existingSlip?->is_submitted)
                 <form method="POST" action="{{ route('betting.store') }}">
                     @csrf
 
@@ -50,7 +44,7 @@
                             <table class="table table-bordered table-hover betting-table">
                                 <thead class="thead-light">
                                     <tr>
-                                        <th style="width: 15%;">Date (UTC)</th>
+                                        <th style="width: 20%;">Date & Time (UTC)</th>
                                         <th>Match</th>
                                         <th style="width: 10%;">Home Win</th>
                                         <th style="width: 10%;">Draw</th>
@@ -61,10 +55,14 @@
                                     @foreach ($matches as $index => $match)
                                         @php
                                             $existingPrediction = $existingSlip?->predictions->firstWhere('match_id', $match['id']);
+                                            $isBettable = $match['is_bettable'] && !$existingSlip?->is_submitted;
                                         @endphp
-                                        <tr>
+                                        <tr class="{{ !$isBettable ? 'match-locked' : '' }}">
                                             <td>
                                                 {{ \Carbon\Carbon::parse($match['utcDate'])->format('D, M j H:i') }}
+                                                @if (!$isBettable)
+                                                    <span class="badge badge-danger ml-2">Locked</span>
+                                                @endif
                                                 <input type="hidden" name="predictions[{{ $index }}][match_id]" value="{{ $match['id'] }}">
                                             </td>
                                             <td class="match-cell">
@@ -74,21 +72,19 @@
                                                 <span class="team-name">{{ $match['away']['name'] }}</span>
                                                 <img src="{{ $match['away']['crest'] ?? asset('images/default_crest.png') }}" alt="{{ $match['away']['name'] }}" class="team-crest">
                                             </td>
-                                            <td>
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="radio" name="predictions[{{ $index }}][outcome]" id="home_win_dt_{{ $match['id'] }}" value="home_win" {{ ($existingPrediction?->predicted_outcome == 'home_win' && !$existingSlip?->is_submitted) ? 'checked' : '' }} required {{ $existingSlip?->is_submitted ? 'disabled' : '' }}>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="radio" name="predictions[{{ $index }}][outcome]" id="draw_dt_{{ $match['id'] }}" value="draw" {{ ($existingPrediction?->predicted_outcome == 'draw' && !$existingSlip?->is_submitted) ? 'checked' : '' }} required {{ $existingSlip?->is_submitted ? 'disabled' : '' }}>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="radio" name="predictions[{{ $index }}][outcome]" id="away_win_dt_{{ $match['id'] }}" value="away_win" {{ ($existingPrediction?->predicted_outcome == 'away_win' && !$existingSlip?->is_submitted) ? 'checked' : '' }} required {{ $existingSlip?->is_submitted ? 'disabled' : '' }}>
-                                                </div>
-                                            </td>
+                                            {{-- Conditionally render inputs based on whether the match is bettable --}}
+                                            @foreach (['home_win', 'draw', 'away_win'] as $outcome)
+                                                <td>
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio" 
+                                                               name="predictions[{{ $index }}][outcome]" 
+                                                               id="{{ $outcome }}_dt_{{ $match['id'] }}" 
+                                                               value="{{ $outcome }}"
+                                                               {{ $existingPrediction?->predicted_outcome == $outcome ? 'checked' : '' }}
+                                                               @if($isBettable) required @else disabled @endif>
+                                                    </div>
+                                                </td>
+                                            @endforeach
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -101,10 +97,14 @@
                         @foreach ($matches as $index => $match)
                             @php
                                 $existingPrediction = $existingSlip?->predictions->firstWhere('match_id', $match['id']);
+                                $isBettable = $match['is_bettable'] && !$existingSlip?->is_submitted;
                             @endphp
-                            <div class="match-card-mobile">
+                            <div class="match-card-mobile {{ !$isBettable ? 'match-locked' : '' }}">
                                 <div class="match-card-header">
                                     {{ \Carbon\Carbon::parse($match['utcDate'])->format('D, M j, Y - H:i') }} (UTC)
+                                    @if (!$isBettable)
+                                        <span class="badge badge-danger ml-2">Locked</span>
+                                    @endif
                                 </div>
                                 <div class="match-card-body">
                                     <div class="team-info">
@@ -118,36 +118,41 @@
                                     </div>
                                 </div>
                                 <div class="match-card-footer">
-                                    <div class="btn-group btn-group-toggle" data-toggle="buttons">
-                                        <label class="btn btn-outline-primary {{ ($existingPrediction?->predicted_outcome == 'home_win' && !$existingSlip?->is_submitted) ? 'active' : '' }}">
-                                            <input type="radio" name="predictions[{{ $index }}][outcome]" value="home_win" id="home_win_mb_{{ $match['id'] }}" {{ ($existingPrediction?->predicted_outcome == 'home_win' && !$existingSlip?->is_submitted) ? 'checked' : '' }} required {{ $existingSlip?->is_submitted ? 'disabled' : '' }}> Home Win
-                                        </label>
-                                        <label class="btn btn-outline-primary {{ ($existingPrediction?->predicted_outcome == 'draw' && !$existingSlip?->is_submitted) ? 'active' : '' }}">
-                                            <input type="radio" name="predictions[{{ $index }}][outcome]" value="draw" id="draw_mb_{{ $match['id'] }}" {{ ($existingPrediction?->predicted_outcome == 'draw' && !$existingSlip?->is_submitted) ? 'checked' : '' }} required {{ $existingSlip?->is_submitted ? 'disabled' : '' }}> Draw
-                                        </label>
-                                        <label class="btn btn-outline-primary {{ ($existingPrediction?->predicted_outcome == 'away_win' && !$existingSlip?->is_submitted) ? 'active' : '' }}">
-                                            <input type="radio" name="predictions[{{ $index }}][outcome]" value="away_win" id="away_win_mb_{{ $match['id'] }}" {{ ($existingPrediction?->predicted_outcome == 'away_win' && !$existingSlip?->is_submitted) ? 'checked' : '' }} required {{ $existingSlip?->is_submitted ? 'disabled' : '' }}> Away Win
-                                        </label>
-                                    </div>
+                                    @if ($isBettable)
+                                        <div class="btn-group btn-group-toggle" data-toggle="buttons">
+                                            <label class="btn btn-outline-primary {{ $existingPrediction?->predicted_outcome == 'home_win' ? 'active' : '' }}">
+                                                <input type="radio" name="predictions[{{ $index }}][outcome]" value="home_win" required> Home Win
+                                            </label>
+                                            <label class="btn btn-outline-primary {{ $existingPrediction?->predicted_outcome == 'draw' ? 'active' : '' }}">
+                                                <input type="radio" name="predictions[{{ $index }}][outcome]" value="draw" required> Draw
+                                            </label>
+                                            <label class="btn btn-outline-primary {{ $existingPrediction?->predicted_outcome == 'away_win' ? 'active' : '' }}">
+                                                <input type="radio" name="predictions[{{ $index }}][outcome]" value="away_win" required> Away Win
+                                            </label>
+                                        </div>
+                                    @else
+                                        {{-- Show the user's pick if it exists, otherwise show 'Betting Closed' --}}
+                                        @php
+                                            $pickText = 'Betting Closed';
+                                            if ($existingPrediction) {
+                                                $pickText = 'Your Pick: ' . str_replace('_', ' ', Str::title($existingPrediction->predicted_outcome));
+                                            }
+                                        @endphp
+                                        <div class="text-center text-muted font-weight-bold">{{ $pickText }}</div>
+                                    @endif
                                 </div>
                             </div>
                         @endforeach
                     </div>
 
-                    @if (!$existingSlip || !$existingSlip->is_submitted)
-                        <div class="mt-4 text-center">
-                            <button type="submit" class="btn btn-success btn-lg"><i class="fas fa-check-circle mr-2"></i>Submit Predictions</button>
-                        </div>
-                    @endif
+                    <div class="mt-4 text-center">
+                        <button type="submit" class="btn btn-success btn-lg"><i class="fas fa-check-circle mr-2"></i>Submit Predictions</button>
+                    </div>
                 </form>
 
             {{-- Submitted View --}}
             @elseif ($existingSlip && $existingSlip->is_submitted && !empty($matches))
-                <div class="alert alert-info">
-                    <h5 class="alert-heading"><i class="fas fa-receipt"></i> Your Bets Are In!</h5>
-                    <p>Your predictions for this week have been submitted. Good luck!</p>
-                </div>
-                 <div class="submitted-picks">
+                <div class="submitted-picks">
                     @foreach($matches as $match)
                         @php
                             $prediction = $existingSlip->predictions->firstWhere('match_id', $match['id']);
@@ -171,7 +176,7 @@
                             }
                         @endphp
                         <div class="submitted-pick-card">
-                             <div class="match-info">
+                            <div class="match-info">
                                 <img src="{{ $match['home']['crest'] ?? '' }}" class="team-crest-sm" alt="">
                                 <span class="team-name-submitted">{{ $match['home']['name'] }} vs {{ $match['away']['name'] }}</span>
                                 <img src="{{ $match['away']['crest'] ?? '' }}" class="team-crest-sm" alt="">
@@ -206,6 +211,15 @@
         gap: 0.5rem;
     }
 
+    /* --- Locked Match Styling --- */
+    .match-locked {
+        background-color: #f1f1f1 !important;
+        opacity: 0.7;
+    }
+    .match-locked .team-name {
+        color: #6c757d;
+    }
+
     /* --- Desktop Table Styles --- */
     .betting-table th, .betting-table td {
         text-align: center;
@@ -235,6 +249,10 @@
     .betting-table .form-check-input {
         transform: scale(1.5);
         cursor: pointer;
+    }
+    .betting-table .form-check-input:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
     }
     
     /* --- Mobile Card Styles --- */
@@ -292,7 +310,6 @@
     .match-card-footer .btn {
         font-size: 0.85rem;
     }
-    /* Hide the actual radio button but keep it accessible */
     .match-card-footer input[type="radio"] {
         position: absolute;
         clip: rect(0,0,0,0);
@@ -320,7 +337,7 @@
         align-items: center;
         gap: 0.75rem;
         flex-grow: 1;
-        margin-right: 1rem; /* Space between match and pick on wider screens */
+        margin-right: 1rem;
     }
     .submitted-pick-card .team-name-submitted {
         font-weight: 600;
@@ -333,6 +350,5 @@
         font-size: 0.9em;
         padding: .5em .8em;
     }
-
 </style>
 @endpush

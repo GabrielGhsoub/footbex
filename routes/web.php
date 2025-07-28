@@ -7,6 +7,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\MatchDetailsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\BettingController;
+use App\Http\Controllers\TimeTestingController;
 
 // Authentication routes (no 'auth' middleware applied here)
 Auth::routes();
@@ -35,8 +36,10 @@ Route::group(['middleware' => 'auth'], function () {
     Route::post('/weekly-bet', [BettingController::class, 'storeCurrentWeekBet'])->name('betting.store');
     Route::get('/my-bets', [BettingController::class, 'myBets'])->name('betting.my_bets');
 
-    // If you have a separate /dashboard route that uses HomeController@dashboard
-    // Route::get('/dashboard', [HomeController::class, 'dashboard'])->name('dashboard');
-    // Ensure it doesn't conflict or serves its intended purpose.
-    // The request is about the page at '/', which we now point to showWelcomeDashboard.
+    Route::prefix('admin')->name('admin.')->group(function () {
+            // In a real app, you would add an 'is_admin' middleware to this group
+            Route::get('/time-test', [TimeTestingController::class, 'show'])->name('time.show');
+            Route::post('/time-test/set', [TimeTestingController::class, 'set'])->name('time.set');
+            Route::post('/time-test/reset', [TimeTestingController::class, 'reset'])->name('time.reset');
+        });
 });
