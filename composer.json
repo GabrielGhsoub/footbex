@@ -7,6 +7,7 @@
     "require": {
         "php": "^8.0.2",
         "asdh/laravel-flatpickr": "^2.2",
+        "doctrine/dbal": "^3.10",
         "guzzlehttp/guzzle": "^7.8",
         "jeroennoten/laravel-adminlte": "^3.11",
         "laravel/framework": "^9.19",

@@ -151,7 +151,8 @@ class BettingController extends Controller
         
         $slip = WeeklyBetSlip::firstOrCreate(
             ['user_id' => $user->id, 'week_identifier' => $bettingWeekIdentifier],
-            ['status' => 'open', 'is_submitted' => false]
+            ['status' => 'open', 'is_submitted' => false,
+            'betting_opens_at' => null]
         );
 
         // Fetch all existing predictions for this slip upfront to prevent multiple queries.
