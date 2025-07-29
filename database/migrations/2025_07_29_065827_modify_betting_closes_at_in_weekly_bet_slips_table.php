@@ -1,8 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB; // <-- Make sure this is included
 
 return new class extends Migration
 {
@@ -13,9 +12,8 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::table('weekly_bet_slips', function (Blueprint $table) {
-            $table->timestamp('betting_closes_at')->nullable()->change();
-        });
+        // Use a raw SQL statement to modify the column directly
+        DB::statement('ALTER TABLE weekly_bet_slips MODIFY betting_closes_at TIMESTAMP NULL');
     }
 
     /**
@@ -25,8 +23,7 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::table('weekly_bet_slips', function (Blueprint $table) {
-            $table->timestamp('betting_closes_at')->nullable(false)->change();
-        });
+        // Revert the change using a raw SQL statement
+        DB::statement('ALTER TABLE weekly_bet_slips MODIFY betting_closes_at TIMESTAMP NOT NULL');
     }
 };
