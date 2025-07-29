@@ -1,18 +1,27 @@
 @extends('adminlte::page')
 
-@section('title', 'Time Testing Utility')
+@section('title', 'Admin Utilities')
 
 @section('content_header')
-    <h1><i class="fas fa-clock mr-2"></i>Time Testing Utility</h1>
+    <h1><i class="fas fa-cogs mr-2"></i>Admin Utilities</h1>
 @stop
 
 @section('content')
 <div class="container-fluid">
     <div class="row">
         <div class="col-md-8">
+            {{-- This block will display the output from the settlement command --}}
+            @if (session('settle_output'))
+                <div class="alert alert-default-secondary">
+                    <h5 class="alert-heading">Settlement Output:</h5>
+                    <pre class="mb-0" style="white-space: pre-wrap; word-break: break-all;">{{ rtrim(session('settle_output')) }}</pre>
+                </div>
+            @endif
+
+            {{-- Time Testing Card --}}
             <div class="card card-primary">
                 <div class="card-header">
-                    <h3 class="card-title">Set Application Time</h3>
+                    <h3 class="card-title"><i class="fas fa-clock mr-2"></i>Time Testing Utility</h3>
                 </div>
                 <div class="card-body">
                     @if(!app()->environment('local', 'testing'))
@@ -28,16 +37,16 @@
                         @endif
                         @if (session('error'))
                              <div class="alert alert-danger alert-dismissible">
-                                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                                <i class="icon fas fa-ban"></i> {{ session('error') }}
-                            </div>
+                                 <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                                 <i class="icon fas fa-ban"></i> {{ session('error') }}
+                             </div>
                         @endif
                          @if (session('info'))
                              <div class="alert alert-info alert-dismissible">
-                                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                                <i class="icon fas fa-info"></i> {{ session('info') }}
-                            </div>
-                        @endif
+                                 <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                                 <i class="icon fas fa-info"></i> {{ session('info') }}
+                             </div>
+                         @endif
 
                         <div class="alert alert-info">
                             <h5 class="alert-heading">Current Effective Time</h5>
@@ -63,6 +72,26 @@
                             <button type="submit" class="btn btn-danger"><i class="fas fa-undo mr-2"></i>Reset to Real Time</button>
                         </form>
                     @endif
+                </div>
+            </div>
+
+            {{-- Manual Bet Settlement Card --}}
+            <div class="card card-success mt-4">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-check-circle mr-2"></i>Manual Bet Settlement</h3>
+                </div>
+                <div class="card-body">
+                    <p>Trigger the weekly bet settlement process manually. Leave the week field blank to process all eligible past weeks according to the command's logic.</p>
+                    
+                    <form method="POST" action="{{ route('admin.bets.settle') }}">
+                        @csrf
+                        <div class="form-group">
+                            <label for="week"><strong>Optional: Specific Week</strong></label>
+                            <input type="text" id="week" name="week" class="form-control" placeholder="YYYY-WW (e.g., {{ \Carbon\Carbon::now()->subWeek()->format('o-W') }})">
+                            <small class="form-text text-muted">If you specify a week, only that week will be targeted for settlement.</small>
+                        </div>
+                        <button type="submit" class="btn btn-success"><i class="fas fa-play-circle mr-2"></i>Settle Bets Now</button>
+                    </form>
                 </div>
             </div>
         </div>

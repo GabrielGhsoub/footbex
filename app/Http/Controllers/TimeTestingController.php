@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Artisan;
 
 class TimeTestingController extends Controller
 {
@@ -80,5 +81,40 @@ class TimeTestingController extends Controller
             return redirect()->route('admin.time.show')->with('success', 'Test time has been reset to real time.');
         }
         return redirect()->route('admin.time.show')->with('info', 'No test time was set.');
+    }
+
+    /**
+     * Manually trigger the weekly bet settlement command.
+     */
+    public function settleBets(Request $request)
+    {
+        $request->validate([
+            'week' => 'nullable|regex:/^\d{4}-\d{2}$/', // Validates 'YYYY-WW' format
+        ]);
+
+        try {
+            $week = $request->input('week');
+            $parameters = [];
+
+            if ($week) {
+                $parameters['--week'] = $week;
+            }
+
+            // Call the artisan command
+            Artisan::call('bets:settle-weekly', $parameters);
+
+            // Get the console output to display on the frontend
+            $output = Artisan::output();
+
+            Log::info("Manual bet settlement triggered via admin panel. Output:\n" . $output);
+
+            return redirect()->route('admin.time.show')
+                ->with('success', 'Bet settlement process triggered!')
+                ->with('settle_output', $output);
+
+        } catch (\Exception $e) {
+            Log::error('Manual bet settlement from admin panel failed: ' . $e->getMessage());
+            return redirect()->route('admin.time.show')->with('error', 'An error occurred: ' . $e->getMessage());
+        }
     }
 }
