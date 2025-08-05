@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use App\Models\Setting; // <-- ADD THIS LINE
 
 class TimeTestingController extends Controller
 {
@@ -26,7 +27,7 @@ class TimeTestingController extends Controller
                 
                 // For the display message
                 $currentTimeMessage = '<strong>Effective Test Time:</strong> ' . $testTime->toDayDateTimeString() . 
-                                      ' (' . $testTime->tzName . ')<br><small class="text-muted">Stored UTC value: ' . $sessionTime . '</small>';
+                                        ' (' . $testTime->tzName . ')<br><small class="text-muted">Stored UTC value: ' . $sessionTime . '</small>';
 
                 // For pre-populating the input field, format it to 'YYYY-MM-DDTHH:MM'
                 $prepopulatedTime = $testTime->format('Y-m-d\TH:i');
@@ -36,9 +37,13 @@ class TimeTestingController extends Controller
             }
         }
 
+        // Fetch the current pool size from the database.
+        $currentPoolSize = Setting::getValue('pool_size', '0');
+
         return view('admin.time-testing', [
             'currentTimeMessage' => $currentTimeMessage,
-            'prepopulatedTime' => $prepopulatedTime
+            'prepopulatedTime' => $prepopulatedTime,
+            'currentPoolSize' => $currentPoolSize, // Pass the pool size to the view
         ]);
     }
 
@@ -81,6 +86,34 @@ class TimeTestingController extends Controller
             return redirect()->route('admin.time.show')->with('success', 'Test time has been reset to real time.');
         }
         return redirect()->route('admin.time.show')->with('info', 'No test time was set.');
+    }
+
+    /**
+     * NEW METHOD: Update the prize pool size.
+     */
+    public function updatePoolSize(Request $request)
+    {
+        if (!app()->environment('local', 'testing')) {
+            return redirect()->route('admin.time.show')->with('error', 'This feature is only available in local/testing environments.');
+        }
+
+        $request->validate([
+            'pool_size' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            Setting::updateOrCreate(
+                ['key' => 'pool_size'],
+                ['value' => $request->input('pool_size')]
+            );
+
+            Log::info('Prize pool size updated to: ' . $request->input('pool_size'));
+
+            return redirect()->route('admin.time.show')->with('success', 'Prize pool size has been updated successfully.');
+        } catch (\Exception $e) {
+            Log::error('Failed to update prize pool size: ' . $e->getMessage());
+            return redirect()->route('admin.time.show')->with('error', 'Failed to update the prize pool size.');
+        }
     }
 
     /**

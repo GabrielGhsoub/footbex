@@ -42,5 +42,6 @@ Route::group(['middleware' => 'auth'], function () {
         
         // Route to handle the manual bet settlement
         Route::post('/settle-bets', [TimeTestingController::class, 'settleBets'])->name('bets.settle');
+        Route::post('/pool/update', [TimeTestingController::class, 'updatePoolSize'])->name('pool.update');
     });
 });

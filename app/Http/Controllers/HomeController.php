@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\WeeklyBetSlip;
 use App\Http\Controllers\Traits\ProvidesEffectiveTime;
 use Illuminate\Support\Facades\DB;
+use App\Models\Setting; // <-- ADD THIS LINE
 
 class HomeController extends Controller
 {
@@ -34,7 +35,8 @@ class HomeController extends Controller
             ->take(10)
             ->get();
 
-        $poolPrize = 1000;
+        // Fetches the pool prize from the database, with a default fallback.
+        $poolPrize = Setting::getValue('pool_size', '1000');
 
         return view('welcome', [
             'leaderboardUsers' => $leaderboardUsers,
@@ -85,8 +87,8 @@ class HomeController extends Controller
     /**
      * Show the match details page. (Likely unused if MatchDetailsController handles this)
      */
-     public function showMatchDetails(int $matchId)
-     {
-        return view('match-details', ['matchId' => $matchId]);
-     }
+      public function showMatchDetails(int $matchId)
+      {
+         return view('match-details', ['matchId' => $matchId]);
+      }
 }

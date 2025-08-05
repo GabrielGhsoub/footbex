@@ -18,6 +18,54 @@
                 </div>
             @endif
 
+            {{-- Display session messages for all actions on this page --}}
+            @if (session('success'))
+                <div class="alert alert-success alert-dismissible">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                    <i class="icon fas fa-check"></i> {{ session('success') }}
+                </div>
+            @endif
+            @if (session('error'))
+                <div class="alert alert-danger alert-dismissible">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                    <i class="icon fas fa-ban"></i> {{ session('error') }}
+                </div>
+            @endif
+            @if (session('info'))
+                <div class="alert alert-info alert-dismissible">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                    <i class="icon fas fa-info"></i> {{ session('info') }}
+                </div>
+            @endif
+
+            {{-- Prize Pool Management Card -- NEW CARD --}}
+            <div class="card card-warning mb-4">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-trophy mr-2"></i>Prize Pool Management</h3>
+                </div>
+                <div class="card-body">
+                    <p>Set the total prize pool for the season.</p>
+                    <form method="POST" action="{{ route('admin.pool.update') }}">
+                        @csrf
+                        <div class="form-group">
+                            <label for="pool_size"><strong>Current Prize Pool ($)</strong></label>
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text">$</span>
+                                </div>
+                                <input type="number" id="pool_size" name="pool_size" class="form-control @error('pool_size') is-invalid @enderror" 
+                                       value="{{ old('pool_size', $currentPoolSize) }}" 
+                                       required min="0" step="any">
+                            </div>
+                            @error('pool_size')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <button type="submit" class="btn btn-warning"><i class="fas fa-save mr-2"></i>Update Pool Size</button>
+                    </form>
+                </div>
+            </div>
+
             {{-- Time Testing Card --}}
             <div class="card card-primary">
                 <div class="card-header">
@@ -29,25 +77,6 @@
                             <strong>Warning!</strong> Time testing is disabled because the application is not in a 'local' or 'testing' environment.
                         </div>
                     @else
-                        @if (session('success'))
-                            <div class="alert alert-success alert-dismissible">
-                                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                                <i class="icon fas fa-check"></i> {{ session('success') }}
-                            </div>
-                        @endif
-                        @if (session('error'))
-                             <div class="alert alert-danger alert-dismissible">
-                                 <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                                 <i class="icon fas fa-ban"></i> {{ session('error') }}
-                             </div>
-                        @endif
-                         @if (session('info'))
-                             <div class="alert alert-info alert-dismissible">
-                                 <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                                 <i class="icon fas fa-info"></i> {{ session('info') }}
-                             </div>
-                         @endif
-
                         <div class="alert alert-info">
                             <h5 class="alert-heading">Current Effective Time</h5>
                             <p class="mb-0">{!! $currentTimeMessage !!}</p>
@@ -67,8 +96,8 @@
                         
                         <form method="POST" action="{{ route('admin.time.reset') }}" class="mt-3 border-top pt-3">
                             @csrf
-                             <label><strong>Reset Time</strong></label>
-                             <p>Click here to clear the test time and revert to using the actual server time.</p>
+                            <label><strong>Reset Time</strong></label>
+                            <p>Click here to clear the test time and revert to using the actual server time.</p>
                             <button type="submit" class="btn btn-danger"><i class="fas fa-undo mr-2"></i>Reset to Real Time</button>
                         </form>
                     @endif
