@@ -7,9 +7,10 @@ use App\Http\Controllers\MatchDetailsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\BettingController;
 use App\Http\Controllers\TimeTestingController;
+use App\Http\Controllers\Auth\RegisterController;
 
-// Authentication routes (no 'auth' middleware applied here)
-Auth::routes();
+// Authentication routes (registration is disabled for public access)
+Auth::routes(['register' => false]);
 
 // Apply 'auth' middleware to all other routes
 Route::group(['middleware' => 'auth'], function () {
@@ -43,5 +44,9 @@ Route::group(['middleware' => 'auth'], function () {
         // Route to handle the manual bet settlement
         Route::post('/settle-bets', [TimeTestingController::class, 'settleBets'])->name('bets.settle');
         Route::post('/pool/update', [TimeTestingController::class, 'updatePoolSize'])->name('pool.update');
+
+        // Admin-only User Registration Routes
+        Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
+        Route::post('/register', [RegisterController::class, 'register']);
     });
 });

@@ -37,7 +37,9 @@ class RegisterController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('guest');
+        // The 'guest' middleware has been removed to allow an authenticated admin
+        // to access the user creation page from the admin dashboard.
+        // Protection is now handled by the 'auth' middleware in the route group.
     }
 
     /**

@@ -9,6 +9,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="row">
+        {{-- Existing Admin Utilities Column --}}
         <div class="col-md-8">
             {{-- This block will display the output from the settlement command --}}
             @if (session('settle_output'))
@@ -38,7 +39,7 @@
                 </div>
             @endif
 
-            {{-- Prize Pool Management Card -- NEW CARD --}}
+            {{-- Prize Pool Management Card --}}
             <div class="card card-warning mb-4">
                 <div class="card-header">
                     <h3 class="card-title"><i class="fas fa-trophy mr-2"></i>Prize Pool Management</h3>
@@ -120,6 +121,66 @@
                             <small class="form-text text-muted">If you specify a week, only that week will be targeted for settlement.</small>
                         </div>
                         <button type="submit" class="btn btn-success"><i class="fas fa-play-circle mr-2"></i>Settle Bets Now</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        {{-- NEW: User Registration Column --}}
+        <div class="col-md-4">
+            <div class="card card-info">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-user-plus mr-2"></i>Create New User</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('admin.register') }}">
+                        @csrf
+
+                        {{-- Name Field --}}
+                        <div class="form-group">
+                            <label for="name">{{ __('Name') }}</label>
+                            <input id="name" type="text" class="form-control @error('name') is-invalid @enderror" name="name" value="{{ old('name') }}" required autocomplete="name">
+                            @error('name')
+                                <span class="invalid-feedback" role="alert">
+                                    <strong>{{ $message }}</strong>
+                                </span>
+                            @enderror
+                        </div>
+
+                        {{-- Email Field --}}
+                        <div class="form-group">
+                            <label for="email">{{ __('Email Address') }}</label>
+                            <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email">
+                            @error('email')
+                                <span class="invalid-feedback" role="alert">
+                                    <strong>{{ $message }}</strong>
+                                </span>
+                            @enderror
+                        </div>
+
+                        {{-- Password Field --}}
+                        <div class="form-group">
+                            <label for="password">{{ __('Password') }}</label>
+                            <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="new-password">
+                            @error('password')
+                                <span class="invalid-feedback" role="alert">
+                                    <strong>{{ $message }}</strong>
+                                </span>
+                            @enderror
+                        </div>
+
+                        {{-- Confirm Password Field --}}
+                        <div class="form-group">
+                            <label for="password-confirm">{{ __('Confirm Password') }}</label>
+                            <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password">
+                        </div>
+
+                        {{-- Submit Button --}}
+                        <div class="form-group mt-4 mb-0 text-center">
+                            <button type="submit" class="btn btn-info w-100">
+                                <i class="fas fa-user-plus mr-2"></i>{{ __('Register New User') }}
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
