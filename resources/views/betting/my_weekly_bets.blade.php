@@ -38,7 +38,31 @@
                                         aria-controls="collapse{{ $slip->id }}">
                                     <div>
                                         <i class="fas fa-calendar-week mr-2"></i>
-                                        Week: {{ $slip->week_identifier }}
+                                        
+                                        @php
+                                            // Temporary UI-only gameweek calculation
+                                            $gameweek = null;
+                                            $startYear = 2025;
+                                            $startWeekOfYear = 33; // Week 33 of 2025 is Gameweek 1
+
+                                            if (str_contains($slip->week_identifier, '-')) {
+                                                list($slipYear, $slipWeek) = array_map('intval', explode('-', $slip->week_identifier));
+
+                                                if ($slipYear === $startYear && $slipWeek >= $startWeekOfYear) {
+                                                    $gameweek = ($slipWeek - $startWeekOfYear) + 1;
+                                                } elseif ($slipYear > $startYear) {
+                                                    // Handle rollover to the next calendar year
+                                                    $gameweek = (52 - $startWeekOfYear) + 1 + $slipWeek;
+                                                }
+                                            }
+                                        @endphp
+
+                                        @if($gameweek)
+                                            Gameweek {{ $gameweek }}
+                                        @else
+                                            Week: {{ $slip->week_identifier }} {{-- Fallback for pre-season slips --}}
+                                        @endif
+
                                         <small class="d-block d-sm-inline ml-sm-2">
                                             (Submitted: {{ $slip->created_at->format('D, M j, Y') }})
                                         </small>
@@ -51,13 +75,13 @@
                                         @endif
                                         <span class="badge
                                             @switch($slip->status)
-                                                @case('submitted') badge-warning @break
+                                                @case('open') badge-warning @break
                                                 @case('processing') badge-info @break
                                                 @case('settled') badge-success @break
                                                 @default badge-secondary @break
                                             @endswitch">
                                             @switch($slip->status)
-                                                @case('submitted') <i class="fas fa-hourglass-half mr-1"></i> @break
+                                                @case('open') <i class="fas fa-hourglass-half mr-1"></i> @break
                                                 @case('processing') <i class="fas fa-cogs mr-1"></i> @break
                                                 @case('settled') <i class="fas fa-check-circle mr-1"></i> @break
                                             @endswitch

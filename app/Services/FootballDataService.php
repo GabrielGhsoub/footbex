@@ -50,7 +50,7 @@ class FootballDataService
         }
 
         $dateFrom = $referenceDate->copy()->startOfWeek(Carbon::MONDAY)->toDateString();
-        $dateTo   = $referenceDate->copy()->endOfWeek(Carbon::SUNDAY)->toDateString();
+        $dateTo  = $referenceDate->copy()->startOfWeek(Carbon::MONDAY)->addDays(7)->toDateString();
         
         $cacheKey = "pl-matches-weekly-{$dateFrom}-to-{$dateTo}";
         $cacheDuration = now()->addHour();
