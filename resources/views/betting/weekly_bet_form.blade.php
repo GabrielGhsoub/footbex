@@ -9,10 +9,32 @@
 @section('content')
     <div class="card card-primary card-outline">
         <div class="card-header responsive-header">
+            @php
+                // Temporary UI-only gameweek calculation
+                $gameweek = null;
+                $startYear = 2025;
+                $startWeekOfYear = 33; // Week 33 of 2025 is Gameweek 1
+
+                if (isset($weekIdentifier) && str_contains($weekIdentifier, '-')) {
+                    list($slipYear, $slipWeek) = array_map('intval', explode('-', $weekIdentifier));
+
+                    if ($slipYear === $startYear && $slipWeek >= $startWeekOfYear) {
+                        $gameweek = ($slipWeek - $startWeekOfYear) + 1;
+                    } elseif ($slipYear > $startYear) {
+                        // Handle rollover to the next calendar year
+                        $gameweek = (52 - $startWeekOfYear) + 1 + $slipWeek;
+                    }
+                }
+            @endphp
+
             <h3 class="card-title mb-1 mb-md-0">
-                <i class="fas fa-calendar-week mr-2"></i>Week: {{ $weekIdentifier ?? 'N/A' }}
+                <i class="fas fa-calendar-week mr-2"></i>
+                @if($gameweek)
+                    Gameweek {{ $gameweek }}
+                @else
+                    Week: {{ $weekIdentifier ?? 'N/A' }} {{-- Fallback for pre-season slips --}}
+                @endif
             </h3>
-            {{-- The old header with a single open/close status is removed, as it's now per-match --}}
         </div>
         <div class="card-body">
             {{-- Session Messages --}}
