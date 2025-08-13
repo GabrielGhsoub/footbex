@@ -7,11 +7,11 @@
 @stop
 
 @section('content')
-<div class="card">
+<div class="card shadow-sm">
     <div class="card-body">
         @if (session('status'))
-            <div class="alert alert-success alert-dismissible">
-                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+            <div class="alert alert-success alert-dismissible fade show">
+                <button type="button" class="close" data-dismiss="alert">&times;</button>
                 <i class="icon fas fa-check"></i>{{ session('status') }}
             </div>
         @endif
@@ -27,51 +27,58 @@
         @else
             <div class="accordion" id="slipsAccordion">
                 @foreach($slips as $slip)
-                    <div class="card slip-card card-info mb-3 {{ $loop->first ? '' : 'collapsed-card' }} {{ $slip->status == 'submitted' || $slip->status == 'processing' ? 'card-outline' : '' }}">
-                        <div class="card-header slip-card-header" id="heading{{ $slip->id }}" data-card-widget="collapse">
+                    <div class="card slip-card mb-3 border-0 shadow-sm">
+                        <div class="card-header bg-info text-white p-0" id="heading{{ $slip->id }}">
                             <h2 class="mb-0">
-                                <button class="btn btn-link btn-block text-left text-white" type="button">
-                                    <div class="d-flex justify-content-between align-items-center flex-wrap">
-                                        <div class="slip-title">
-                                            <i class="fas fa-calendar-week mr-2"></i>
-                                            Week: {{ $slip->week_identifier }}
-                                            <small class="d-block d-sm-inline mt-1 mt-sm-0 ml-sm-2">
-                                                (Submitted: {{ $slip->created_at->format('D, M j, Y') }})
-                                            </small>
-                                        </div>
-                                        <div class="slip-tools">
-                                            @if($slip->status === 'settled' && !is_null($slip->total_score))
-                                                <span class="badge badge-light mr-2">
-                                                    <i class="fas fa-star mr-1"></i>Total Score: {{ $slip->total_score }}
-                                                </span>
-                                            @endif
-                                            <span class="badge status-badge
-                                                @switch($slip->status)
-                                                    @case('submitted') badge-warning @break
-                                                    @case('processing') badge-info @break
-                                                    @case('settled') badge-success @break
-                                                    @default badge-secondary @break
-                                                @endswitch">
-                                                @switch($slip->status)
-                                                    @case('submitted') <i class="fas fa-hourglass-half mr-1"></i> @break
-                                                    @case('processing') <i class="fas fa-cogs mr-1"></i> @break
-                                                    @case('settled') <i class="fas fa-check-circle mr-1"></i> @break
-                                                @endswitch
-                                                {{ ucfirst($slip->status) }}
+                                <button class="btn btn-link btn-block text-left text-white d-flex justify-content-between align-items-center"
+                                        type="button"
+                                        data-toggle="collapse"
+                                        data-target="#collapse{{ $slip->id }}"
+                                        aria-expanded="{{ $loop->first ? 'true' : 'false' }}"
+                                        aria-controls="collapse{{ $slip->id }}">
+                                    <div>
+                                        <i class="fas fa-calendar-week mr-2"></i>
+                                        Week: {{ $slip->week_identifier }}
+                                        <small class="d-block d-sm-inline ml-sm-2">
+                                            (Submitted: {{ $slip->created_at->format('D, M j, Y') }})
+                                        </small>
+                                    </div>
+                                    <div class="slip-tools text-right">
+                                        @if($slip->status === 'settled' && !is_null($slip->total_score))
+                                            <span class="badge badge-light mr-2">
+                                                <i class="fas fa-star mr-1"></i>Total Score: {{ $slip->total_score }}
                                             </span>
-                                        </div>
+                                        @endif
+                                        <span class="badge
+                                            @switch($slip->status)
+                                                @case('submitted') badge-warning @break
+                                                @case('processing') badge-info @break
+                                                @case('settled') badge-success @break
+                                                @default badge-secondary @break
+                                            @endswitch">
+                                            @switch($slip->status)
+                                                @case('submitted') <i class="fas fa-hourglass-half mr-1"></i> @break
+                                                @case('processing') <i class="fas fa-cogs mr-1"></i> @break
+                                                @case('settled') <i class="fas fa-check-circle mr-1"></i> @break
+                                            @endswitch
+                                            {{ ucfirst($slip->status) }}
+                                        </span>
+                                        <i class="fas fa-chevron-down ml-2 toggle-icon"></i>
                                     </div>
                                 </button>
                             </h2>
                         </div>
 
-                        <div id="collapse{{ $slip->id }}" class="collapse {{ $loop->first ? 'show' : '' }}" aria-labelledby="heading{{ $slip->id }}" data-parent="#slipsAccordion">
+                        <div id="collapse{{ $slip->id }}"
+                             class="collapse {{ $loop->first ? 'show' : '' }}"
+                             aria-labelledby="heading{{ $slip->id }}"
+                             data-parent="#slipsAccordion">
                             <div class="card-body p-0">
                                 @if($slip->predictions->isNotEmpty())
-                                    {{-- Desktop Table View --}}
+                                    {{-- Desktop Table --}}
                                     <div class="d-none d-md-block">
-                                        <table class="table table-striped table-sm predictions-table">
-                                            <thead>
+                                        <table class="table table-striped table-sm mb-0">
+                                            <thead class="thead-light">
                                                 <tr>
                                                     <th>Match</th>
                                                     <th>Your Prediction</th>
@@ -82,9 +89,7 @@
                                             <tbody>
                                                 @foreach($slip->predictions->sortBy('match_utc_date_time') as $prediction)
                                                     <tr>
-                                                        <td class="match-cell">
-                                                            <i class="fas fa-futbol text-muted mr-2"></i>{{ $prediction->home_team_name }} vs {{ $prediction->away_team_name }}
-                                                        </td>
+                                                        <td><i class="fas fa-futbol text-muted mr-2"></i>{{ $prediction->home_team_name }} vs {{ $prediction->away_team_name }}</td>
                                                         <td>
                                                             @if($prediction->actual_outcome && $prediction->points_awarded > 0)
                                                                 <span class="text-success">✅</span>
@@ -113,15 +118,15 @@
                                         </table>
                                     </div>
 
-                                    {{-- Mobile List View --}}
+                                    {{-- Mobile List --}}
                                     <div class="d-md-none p-2">
                                         @foreach($slip->predictions->sortBy('match_utc_date_time') as $prediction)
                                             <div class="prediction-mobile-row">
-                                                <div class="font-weight-bold match-title">{{ $prediction->home_team_name }} vs {{ $prediction->away_team_name }}</div>
+                                                <div class="font-weight-bold">{{ $prediction->home_team_name }} vs {{ $prediction->away_team_name }}</div>
                                                 <div class="details-grid">
                                                     <div>
                                                         <small class="text-muted">Your Pick</small>
-                                                        <div class="pick-value">
+                                                        <div>
                                                             @if($prediction->actual_outcome && $prediction->points_awarded > 0)
                                                                 <span class="text-success">✅</span>
                                                             @elseif($prediction->actual_outcome)
@@ -155,7 +160,7 @@
                                         @endforeach
                                     </div>
                                 @else
-                                    <p class="text-center p-3">No predictions found for this slip.</p>
+                                    <p class="text-center p-3 mb-0">No predictions found for this slip.</p>
                                 @endif
                             </div>
                         </div>
@@ -173,78 +178,46 @@
 
 @push('css')
 <style>
-    /* --- Empty State --- */
     .empty-state {
         text-align: center;
         padding: 40px 20px;
     }
-
-    /* --- Accordion & Card Header Styling --- */
-    .slip-card .card-header {
-        cursor: pointer;
-        padding: 0;
-    }
     .slip-card .btn-link {
-        color: #fff;
         text-decoration: none;
-    }
-    .slip-card .btn-link:hover {
-        color: #f0f0f0;
-    }
-    .slip-title {
-        font-size: 1.1rem;
         font-weight: 600;
     }
     .slip-tools .badge {
-        font-size: 0.9rem;
-        padding: .4em .7em;
-        vertical-align: middle;
+        font-size: 0.85rem;
     }
-    /* Add icon for collapse state */
-    .slip-card .btn-link:after {
-        font-family: 'Font Awesome 5 Free';
-        content: '\f077'; /* chevron-up */
-        font-weight: 900;
-        float: right;
-        margin-left: 10px;
-        transition: transform 0.2s ease-in-out;
+    .toggle-icon {
+        transition: transform 0.3s ease;
     }
-    .slip-card.collapsed-card .btn-link:after {
-        transform: rotate(180deg);
+    .collapsed .toggle-icon {
+        transform: rotate(-90deg);
     }
-
-    /* --- Desktop Table Styling --- */
-    .predictions-table th {
-        border-top: 0;
-        color: #495057;
-        font-weight: 600;
-    }
-    .predictions-table td {
-        vertical-align: middle;
-    }
-    .predictions-table .match-cell {
-        font-weight: 500;
-    }
-
-    /* --- Mobile List Styling --- */
     .prediction-mobile-row {
-        padding: 12px 10px;
         border-bottom: 1px solid #e9ecef;
+        padding: 10px 0;
     }
     .prediction-mobile-row:last-child {
         border-bottom: none;
     }
-    .prediction-mobile-row .match-title {
-        margin-bottom: 8px;
-    }
-    .prediction-mobile-row .details-grid {
+    .details-grid {
         display: grid;
         grid-template-columns: 2fr 2fr 1fr;
         gap: 10px;
-        align-items: center;
-    }
-    .prediction-mobile-row .pick-value {
-        font-weight: 500;
     }
 </style>
+@endpush
+
+@push('js')
+<script>
+    // Rotate chevron on collapse toggle
+    $('#slipsAccordion').on('show.bs.collapse', function (e) {
+        $(e.target).prev('.card-header').find('.toggle-icon').css('transform', 'rotate(0deg)');
+    });
+    $('#slipsAccordion').on('hide.bs.collapse', function (e) {
+        $(e.target).prev('.card-header').find('.toggle-icon').css('transform', 'rotate(-90deg)');
+    });
+</script>
 @endpush
