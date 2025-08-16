@@ -27,12 +27,12 @@ class HomeController extends Controller
     public function showWelcomeDashboard()
     {
         $leaderboardUsers = User::select('users.id', 'users.name')
-            ->addSelect(DB::raw('SUM(CASE WHEN weekly_bet_slips.status = "settled" THEN weekly_bet_slips.total_score ELSE 0 END) as total_points'))
+            ->addSelect(DB::raw('SUM(COALESCE(weekly_bet_predictions.points_awarded, 0)) as total_points'))
             ->leftJoin('weekly_bet_slips', 'users.id', '=', 'weekly_bet_slips.user_id')
+            ->leftJoin('weekly_bet_predictions', 'weekly_bet_slips.id', '=', 'weekly_bet_predictions.weekly_bet_slip_id')
             ->groupBy('users.id', 'users.name')
             ->orderBy('total_points', 'desc')
             ->orderBy('users.name', 'asc')
-            ->take(10)
             ->get();
 
         // Fetches the pool prize from the database, with a default fallback.
