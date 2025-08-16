@@ -33,9 +33,6 @@ class SettleWeeklyBets extends Command
 
         $targetWeek = $this->option('week');
 
-        // MODIFIED QUERY LOGIC:
-        // We no longer rely on `is_submitted`. Instead, we look for slips that are 'open'
-        // or already 'processing' from past weeks.
         $query = WeeklyBetSlip::whereIn('status', ['open', 'processing'])
             ->with('predictions');
 
@@ -44,18 +41,17 @@ class SettleWeeklyBets extends Command
             $this->info("Targeting specific week: {$targetWeek}");
             Log::info("SettleWeeklyBets: Targeting specific week: {$targetWeek}");
         } else {
-            // By default, process all slips from last week or older.
-            // This ensures we only try to settle bets for weeks that have concluded.
-            $lastWeekIdentifier = Carbon::now('UTC')->subWeek()->format('o-W');
-            $query->where('week_identifier', '<=', $lastWeekIdentifier);
-            $this->info("Processing slips up to week: {$lastWeekIdentifier}");
-            Log::info("SettleWeeklyBets: Processing slips with week_identifier <= {$lastWeekIdentifier}");
+            // -- LOGIC CHANGED --
+            // We no longer limit the query to previous weeks.
+            // It will now process ALL slips that are 'open' or 'processing'.
+            $this->info("Processing all pending slips regardless of week.");
+            Log::info("SettleWeeklyBets: Processing all pending slips (status 'open' or 'processing').");
         }
 
         $slipsToProcess = $query->get();
 
         if ($slipsToProcess->isEmpty()) {
-            Log::info('SettleWeeklyBets: No slips to process currently (status open or processing for past weeks).');
+            Log::info('SettleWeeklyBets: No slips to process currently.');
             $this->info('No weekly bet slips found needing settlement.');
             return 0;
         }
