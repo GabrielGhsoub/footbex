@@ -33,6 +33,7 @@ class HomeController extends Controller
             ->groupBy('users.id', 'users.name')
             ->orderBy('total_points', 'desc')
             ->orderBy('users.name', 'asc')
+            ->take(10) 
             ->get();
 
         // Fetches the pool prize from the database, with a default fallback.
