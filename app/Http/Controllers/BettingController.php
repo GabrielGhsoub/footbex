@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\WeeklyBetSlip;
-use App\Models\WeeklyBetPrediction;
+use App\Models\WeeklyBetPrediction; // Make sure this is imported
 use App\Services\FootballDataService;
 use App\Http\Controllers\Traits\ProvidesEffectiveTime;
 use Illuminate\Http\Request;
@@ -58,8 +58,12 @@ class BettingController extends Controller
             ->with('predictions')
             ->first();
         
-        // Create a simple collection of match IDs that already have a prediction for quick lookups.
-        $existingPredictionIds = $existingSlip ? $existingSlip->predictions->pluck('match_id') : collect();
+        // --- MODIFICATION START ---
+        // Get ALL match IDs the user has ever placed a bet on to prevent duplicates across weeks.
+        $allUserPredictionMatchIds = WeeklyBetPrediction::whereHas('weeklyBetSlip', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })->pluck('match_id');
+        // --- MODIFICATION END ---
 
         // Process each match to determine if it's individually bettable
         foreach ($matches as $key => $match) {
@@ -69,8 +73,11 @@ class BettingController extends Controller
                 
                 // Condition 1: Is the betting window open based on time?
                 $isTimeBettable = $effectiveNowUtc->lt($deadline);
-                // Condition 2: Has the user already placed a bet on this match?
-                $hasExistingBet = $existingPredictionIds->contains($match['id']);
+                
+                // --- MODIFICATION START ---
+                // Condition 2: Has the user already placed a bet on this match in ANY slip?
+                $hasExistingBet = $allUserPredictionMatchIds->contains($match['id']);
+                // --- MODIFICATION END ---
 
                 // A match is bettable ONLY if the time window is open AND no bet has been placed yet.
                 $matches[$key]['is_bettable'] = $isTimeBettable && !$hasExistingBet;
@@ -155,8 +162,12 @@ class BettingController extends Controller
             'betting_opens_at' => null]
         );
 
-        // Fetch all existing predictions for this slip upfront to prevent multiple queries.
-        $existingPredictions = $slip->predictions->keyBy('match_id');
+        // --- MODIFICATION START ---
+        // Fetch all match IDs the user has ever bet on to prevent duplicates.
+        $allUserPredictionMatchIds = WeeklyBetPrediction::whereHas('weeklyBetSlip', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })->pluck('match_id');
+        // --- MODIFICATION END ---
 
         $predictionsSavedCount = 0;
         $lockedMatchesAttempted = [];
@@ -174,7 +185,11 @@ class BettingController extends Controller
             $deadline = $matchTimeUtc->copy()->subHour();
 
             $isTimeLocked = $effectiveNowUtc->gte($deadline);
-            $isAlreadyBet = $existingPredictions->has($matchId);
+
+            // --- MODIFICATION START ---
+            // Check if a bet for this match exists in ANY of the user's slips.
+            $isAlreadyBet = $allUserPredictionMatchIds->contains($matchId);
+            // --- MODIFICATION END ---
 
             Log::debug("Checking lock status for Match ID {$matchId}", [
                 'is_time_locked' => $isTimeLocked,
