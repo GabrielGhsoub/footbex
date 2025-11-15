@@ -8,6 +8,8 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\BettingController;
 use App\Http\Controllers\TimeTestingController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\DoublePointRequestController;
+use App\Http\Controllers\PowerUpsController;
 
 // Authentication routes (registration is disabled for public access)
 Auth::routes(['register' => false]);
@@ -35,6 +37,9 @@ Route::group(['middleware' => 'auth'], function () {
     Route::post('/weekly-bet', [BettingController::class, 'storeCurrentWeekBet'])->name('betting.store');
     Route::get('/my-bets', [BettingController::class, 'myBets'])->name('betting.my_bets');
 
+    // Double Point Requests
+    Route::post('/double-point-request', [DoublePointRequestController::class, 'store'])->name('double_point.store');
+
     Route::prefix('admin')->name('admin.')->group(function () {
         // In a real app, you would add an 'is_admin' middleware to this group
         Route::get('/time-test', [TimeTestingController::class, 'show'])->name('time.show');
@@ -48,5 +53,13 @@ Route::group(['middleware' => 'auth'], function () {
         // Admin-only User Registration Routes
         Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
         Route::post('/register', [RegisterController::class, 'register']);
+
+        // Power-Ups Management (Double Points + Gameweek Boost)
+        Route::get('/powerups', [PowerUpsController::class, 'index'])->name('powerups.index');
+        Route::post('/powerups/set-match', [PowerUpsController::class, 'setWeeklyMatch'])->name('powerups.set_match');
+        Route::post('/powerups/double-point/{id}/approve', [PowerUpsController::class, 'approveDoublePoint'])->name('powerups.approve_double_point');
+        Route::post('/powerups/double-point/{id}/reject', [PowerUpsController::class, 'rejectDoublePoint'])->name('powerups.reject_double_point');
+        Route::post('/powerups/boost/{id}/approve', [PowerUpsController::class, 'approveBoost'])->name('powerups.approve_boost');
+        Route::post('/powerups/boost/{id}/reject', [PowerUpsController::class, 'rejectBoost'])->name('powerups.reject_boost');
     });
 });

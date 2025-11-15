@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\WeeklyBetSlip;
 use App\Models\WeeklyBetPrediction; // Make sure this is imported
+use App\Models\DoublePointRequest;
+use App\Models\DoublePointWeeklyMatch;
+use App\Models\GameweekBoostRequest;
 use App\Services\FootballDataService;
 use App\Http\Controllers\Traits\ProvidesEffectiveTime;
 use Illuminate\Http\Request;
@@ -40,6 +43,9 @@ class BettingController extends Controller
         $matchesResponse = $this->footballDataService->getWeeklyMatches($bettingWeekReferenceDate);
 
         if (!$matchesResponse['success'] || empty($matchesResponse['data'])) {
+            // No matches this week - get the next upcoming gameweek
+            $upcomingGameweek = $this->footballDataService->getNextGameweek($effectiveNow);
+
             return view('betting.weekly_bet_form', [
                 'matches' => [],
                 'anyMatchBettable' => false,
@@ -47,6 +53,11 @@ class BettingController extends Controller
                 'existingSlip' => null,
                 'currentTime' => $effectiveNow,
                 'weekIdentifier' => $bettingWeekIdentifier,
+                'gameweek' => null, // No gameweek if no matches (e.g., international break)
+                'upcomingGameweek' => $upcomingGameweek, // Show upcoming gameweek during break
+                'doublePointMatch' => null,
+                'existingDoublePointRequest' => null,
+                'gameweekBoost' => null,
             ]);
         }
 
@@ -98,13 +109,44 @@ class BettingController extends Controller
              $message = 'The betting window for all available matches this week has closed, or you have already placed all your bets.';
         }
 
+        // Get the admin-selected double point match for this week
+        $doublePointMatch = DoublePointWeeklyMatch::where('week_identifier', $bettingWeekIdentifier)->first();
+
+        // Check if user already has a double point request for this week
+        $existingDoublePointRequest = null;
+        if ($doublePointMatch) {
+            $existingDoublePointRequest = DoublePointRequest::where('user_id', $user->id)
+                ->where('week_identifier', $bettingWeekIdentifier)
+                ->first();
+        }
+
+        // Check if user has a gameweek boost (they can only have one ever)
+        $gameweekBoost = GameweekBoostRequest::where('user_id', $user->id)->first();
+
+        // Get the actual gameweek number from match data (if matches exist)
+        $gameweek = null;
+        $upcomingGameweek = null;
+        if (!empty($matches)) {
+            // All matches in the same week should have the same matchday number
+            $gameweek = $matches[0]['matchday'] ?? null;
+        } else {
+            // No matches this week - get the next upcoming gameweek
+            $footballDataService = app(\App\Services\FootballDataService::class);
+            $upcomingGameweek = $footballDataService->getNextGameweek($effectiveNow);
+        }
+
         return view('betting.weekly_bet_form', [
             'matches' => $matches,
             'anyMatchBettable' => $anyMatchBettable,
             'message' => $message,
             'existingSlip' => $existingSlip,
             'weekIdentifier' => $bettingWeekIdentifier,
-            'currentTime' => $effectiveNow
+            'currentTime' => $effectiveNow,
+            'gameweek' => $gameweek, // Pass actual gameweek from API
+            'upcomingGameweek' => $upcomingGameweek, // Pass upcoming gameweek during breaks
+            'doublePointMatch' => $doublePointMatch,
+            'existingDoublePointRequest' => $existingDoublePointRequest,
+            'gameweekBoost' => $gameweekBoost,
         ]);
     }
 
@@ -140,6 +182,7 @@ class BettingController extends Controller
             'predictions' => 'sometimes|array',
             'predictions.*.match_id' => 'required|integer',
             'predictions.*.outcome' => 'required|in:home_win,draw,away_win',
+            'opt_in_double_points' => 'nullable|boolean',
         ]);
 
         if (empty($completePredictions)) {
@@ -155,7 +198,7 @@ class BettingController extends Controller
 
         $allWeeklyMatches = collect($matchesResponse['data']);
         $matchTimes = $allWeeklyMatches->keyBy('id')->map(fn($match) => $match['utcDate']);
-        
+
         $slip = WeeklyBetSlip::firstOrCreate(
             ['user_id' => $user->id, 'week_identifier' => $bettingWeekIdentifier],
             ['status' => 'open', 'is_submitted' => false,
@@ -241,6 +284,88 @@ class BettingController extends Controller
             $successMessage .= ' Note: Predictions for some matches were ignored as they are now locked (' . implode(', ', array_unique($lockedMatchesAttempted)) . ').';
         }
 
+        // Handle Double Point Opt-In
+        $optInDoublePoints = $request->input('opt_in_double_points', false);
+        if ($optInDoublePoints) {
+            // Check if user has an approved Gameweek Boost (powers don't stack)
+            $approvedBoost = GameweekBoostRequest::where('user_id', $user->id)
+                ->where('status', 'approved')
+                ->first();
+
+            if ($approvedBoost) {
+                Log::warning('User attempted to opt-in for double points but has an approved Gameweek Boost', [
+                    'user_id' => $user->id,
+                    'week' => $bettingWeekIdentifier
+                ]);
+                // Skip double point opt-in silently (user shouldn't see this option anyway due to UI logic)
+            } else {
+                // Get the admin-selected double point match for this week
+                $doublePointMatch = DoublePointWeeklyMatch::where('week_identifier', $bettingWeekIdentifier)->first();
+
+                if ($doublePointMatch) {
+                    // Check if user already has a double point request for this week
+                    $existingRequest = DoublePointRequest::where('user_id', $user->id)
+                        ->where('week_identifier', $bettingWeekIdentifier)
+                        ->first();
+
+                    if (!$existingRequest) {
+                    // Find the prediction for the admin-selected double point match
+                    $prediction = WeeklyBetPrediction::where('weekly_bet_slip_id', $slip->id)
+                        ->where('match_id', $doublePointMatch->match_id)
+                        ->first();
+
+                    if ($prediction) {
+                        DoublePointRequest::create([
+                            'user_id' => $user->id,
+                            'weekly_bet_prediction_id' => $prediction->id,
+                            'week_identifier' => $bettingWeekIdentifier,
+                            'status' => 'pending',
+                        ]);
+
+                        $successMessage .= ' Your Double Points opt-in has been submitted for admin approval!';
+                        Log::info('Double point opt-in created', [
+                            'user_id' => $user->id,
+                            'match_id' => $doublePointMatch->match_id,
+                            'week' => $bettingWeekIdentifier
+                        ]);
+                    }
+                    } else {
+                        Log::warning('User already has a double point request for this week', [
+                            'user_id' => $user->id,
+                            'week' => $bettingWeekIdentifier
+                        ]);
+                    }
+                }
+            }
+        }
+
+        // Handle Gameweek Boost Activation
+        $activateBoost = $request->input('activate_boost', false);
+        if ($activateBoost) {
+            // Check if user already has a boost (they can only have one ever)
+            $existingBoost = GameweekBoostRequest::where('user_id', $user->id)->first();
+
+            if (!$existingBoost) {
+                GameweekBoostRequest::create([
+                    'user_id' => $user->id,
+                    'week_identifier' => $bettingWeekIdentifier,
+                    'status' => 'pending',
+                ]);
+
+                $successMessage .= ' Your Gameweek Boost has been submitted for admin approval!';
+                Log::info('Gameweek boost request created', [
+                    'user_id' => $user->id,
+                    'week' => $bettingWeekIdentifier
+                ]);
+            } else {
+                Log::warning('User already has a gameweek boost request', [
+                    'user_id' => $user->id,
+                    'existing_week' => $existingBoost->week_identifier,
+                    'status' => $existingBoost->status
+                ]);
+            }
+        }
+
         Log::info('Submission successful.', ['user_id' => $user->id, 'message' => $successMessage]);
         Log::debug('--- End Bet Submission ---');
         return redirect()->route('betting.show_form')->with('status', $successMessage);
@@ -253,9 +378,31 @@ class BettingController extends Controller
     {
         $user = Auth::user();
         $slips = WeeklyBetSlip::where('user_id', $user->id)
-            ->with(['predictions' => fn($query) => $query->orderBy('match_utc_date_time', 'asc')])
+            ->with([
+                'predictions' => fn($query) => $query->orderBy('match_utc_date_time', 'asc'),
+                'predictions.doublePointRequest'
+            ])
             ->orderBy('created_at', 'desc')
             ->paginate(10);
+
+        // Fetch actual gameweek numbers for each slip by looking up match data from API (cached)
+        foreach ($slips as $slip) {
+            $slip->actual_gameweek = null;
+
+            // Get the first prediction's match to determine the gameweek
+            $firstPrediction = $slip->predictions->first();
+            if ($firstPrediction && $firstPrediction->match_id) {
+                try {
+                    $matchDetails = $this->footballDataService->getMatchDetails($firstPrediction->match_id);
+                    if ($matchDetails && isset($matchDetails['matchday'])) {
+                        $slip->actual_gameweek = $matchDetails['matchday'];
+                    }
+                } catch (\Exception $e) {
+                    // If API fails, gameweek will remain null and fall back to week identifier
+                    Log::warning("Failed to fetch gameweek for slip {$slip->id}", ['error' => $e->getMessage()]);
+                }
+            }
+        }
 
         return view('betting.my_weekly_bets', [
             'slips' => $slips,
