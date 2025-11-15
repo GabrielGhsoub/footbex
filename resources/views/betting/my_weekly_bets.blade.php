@@ -38,29 +38,11 @@
                                         aria-controls="collapse{{ $slip->id }}">
                                     <div>
                                         <i class="fas fa-calendar-week mr-2"></i>
-                                        
-                                        @php
-                                            // Temporary UI-only gameweek calculation
-                                            $gameweek = null;
-                                            $startYear = 2025;
-                                            $startWeekOfYear = 33; // Week 33 of 2025 is Gameweek 1
 
-                                            if (str_contains($slip->week_identifier, '-')) {
-                                                list($slipYear, $slipWeek) = array_map('intval', explode('-', $slip->week_identifier));
-
-                                                if ($slipYear === $startYear && $slipWeek >= $startWeekOfYear) {
-                                                    $gameweek = ($slipWeek - $startWeekOfYear) + 1;
-                                                } elseif ($slipYear > $startYear) {
-                                                    // Handle rollover to the next calendar year
-                                                    $gameweek = (52 - $startWeekOfYear) + 1 + $slipWeek;
-                                                }
-                                            }
-                                        @endphp
-
-                                        @if($gameweek)
-                                            Gameweek {{ $gameweek }}
+                                        @if($slip->actual_gameweek)
+                                            Gameweek {{ $slip->actual_gameweek }}
                                         @else
-                                            Week: {{ $slip->week_identifier }} {{-- Fallback for pre-season slips --}}
+                                            Week: {{ $slip->week_identifier }}
                                         @endif
 
                                         <small class="d-block d-sm-inline ml-sm-2">
@@ -108,6 +90,7 @@
                                                     <th>Your Prediction</th>
                                                     <th>Actual Outcome</th>
                                                     <th class="text-center">Points</th>
+                                                    <th class="text-center">Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -136,6 +119,23 @@
                                                                 <span class="text-muted">-</span>
                                                             @endif
                                                         </td>
+                                                        <td class="text-center">
+                                                            @if($prediction->is_double_points)
+                                                                <span class="badge badge-warning" title="Double Points Active">
+                                                                    <i class="fas fa-bolt mr-1"></i>DOUBLE
+                                                                </span>
+                                                            @elseif($prediction->doublePointRequest)
+                                                                @if($prediction->doublePointRequest->status === 'pending')
+                                                                    <span class="badge badge-info" title="Awaiting Admin Approval">
+                                                                        <i class="fas fa-clock mr-1"></i>Pending
+                                                                    </span>
+                                                                @elseif($prediction->doublePointRequest->status === 'rejected')
+                                                                    <span class="badge badge-danger" title="Request Rejected">
+                                                                        <i class="fas fa-times mr-1"></i>Rejected
+                                                                    </span>
+                                                                @endif
+                                                            @endif
+                                                        </td>
                                                     </tr>
                                                 @endforeach
                                             </tbody>
@@ -146,7 +146,24 @@
                                     <div class="d-md-none p-2">
                                         @foreach($slip->predictions->sortBy('match_utc_date_time') as $prediction)
                                             <div class="prediction-mobile-row">
-                                                <div class="font-weight-bold">{{ $prediction->home_team_name }} vs {{ $prediction->away_team_name }}</div>
+                                                <div class="font-weight-bold">
+                                                    {{ $prediction->home_team_name }} vs {{ $prediction->away_team_name }}
+                                                    @if($prediction->is_double_points)
+                                                        <span class="badge badge-warning ml-2" title="Double Points Active">
+                                                            <i class="fas fa-bolt mr-1"></i>DOUBLE
+                                                        </span>
+                                                    @elseif($prediction->doublePointRequest)
+                                                        @if($prediction->doublePointRequest->status === 'pending')
+                                                            <span class="badge badge-info ml-2" title="Awaiting Admin Approval">
+                                                                <i class="fas fa-clock mr-1"></i>Pending
+                                                            </span>
+                                                        @elseif($prediction->doublePointRequest->status === 'rejected')
+                                                            <span class="badge badge-danger ml-2" title="Request Rejected">
+                                                                <i class="fas fa-times mr-1"></i>Rejected
+                                                            </span>
+                                                        @endif
+                                                    @endif
+                                                </div>
                                                 <div class="details-grid">
                                                     <div>
                                                         <small class="text-muted">Your Pick</small>

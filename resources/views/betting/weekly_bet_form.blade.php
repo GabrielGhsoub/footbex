@@ -9,30 +9,14 @@
 @section('content')
     <div class="card card-primary card-outline">
         <div class="card-header responsive-header">
-            @php
-                // Temporary UI-only gameweek calculation
-                $gameweek = null;
-                $startYear = 2025;
-                $startWeekOfYear = 33; // Week 33 of 2025 is Gameweek 1
-
-                if (isset($weekIdentifier) && str_contains($weekIdentifier, '-')) {
-                    list($slipYear, $slipWeek) = array_map('intval', explode('-', $weekIdentifier));
-
-                    if ($slipYear === $startYear && $slipWeek >= $startWeekOfYear) {
-                        $gameweek = ($slipWeek - $startWeekOfYear) + 1;
-                    } elseif ($slipYear > $startYear) {
-                        // Handle rollover to the next calendar year
-                        $gameweek = (52 - $startWeekOfYear) + 1 + $slipWeek;
-                    }
-                }
-            @endphp
-
             <h3 class="card-title mb-1 mb-md-0">
                 <i class="fas fa-calendar-week mr-2"></i>
                 @if($gameweek)
                     Gameweek {{ $gameweek }}
+                @elseif($upcomingGameweek)
+                    Upcoming: Gameweek {{ $upcomingGameweek }}
                 @else
-                    Week: {{ $weekIdentifier ?? 'N/A' }} {{-- Fallback for pre-season slips --}}
+                    Week: {{ $weekIdentifier ?? 'N/A' }}
                 @endif
             </h3>
         </div>
@@ -166,6 +150,104 @@
                             </div>
                         @endforeach
                     </div>
+
+                    {{-- Double Points Opt-In (only for gameweek 20+ and if admin set a match) --}}
+                    {{-- Hide if user has a Gameweek Boost (pending, approved, or rejected) - powers don't stack --}}
+                    @if($gameweek && $gameweek >= 20 && $doublePointMatch && !$gameweekBoost)
+                        <div class="card mt-4 bg-light border-warning">
+                            <div class="card-header bg-warning">
+                                <h5 class="mb-0"><i class="fas fa-bolt mr-2"></i>Double Points Power Play Opportunity!</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info mb-3">
+                                    <i class="fas fa-star mr-2"></i>
+                                    <strong>Featured Match:</strong> {{ $doublePointMatch->home_team_name }} vs {{ $doublePointMatch->away_team_name }}
+                                </div>
+
+                                @if($existingDoublePointRequest)
+                                    @if($existingDoublePointRequest->status === 'pending')
+                                        <div class="alert alert-warning">
+                                            <i class="fas fa-clock mr-2"></i>
+                                            <strong>Status:</strong> Your opt-in is pending admin approval.
+                                        </div>
+                                    @elseif($existingDoublePointRequest->status === 'approved')
+                                        <div class="alert alert-success">
+                                            <i class="fas fa-check-circle mr-2"></i>
+                                            <strong>Approved!</strong> You'll earn 2 points if your prediction for this match is correct!
+                                        </div>
+                                    @elseif($existingDoublePointRequest->status === 'rejected')
+                                        <div class="alert alert-danger">
+                                            <i class="fas fa-times-circle mr-2"></i>
+                                            <strong>Rejected:</strong> {{ $existingDoublePointRequest->rejection_reason ?: 'Your opt-in was not approved.' }}
+                                        </div>
+                                    @endif
+                                @else
+                                    <p class="mb-3">
+                
+                                        <span class="text-info"><i class="fas fa-info-circle"></i> Requires admin approval.</span>
+                                    </p>
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="opt_in_double_points" name="opt_in_double_points" value="1">
+                                        <label class="custom-control-label" for="opt_in_double_points">
+                                            <strong>Yes, I want to opt-in for double points on this match!</strong>
+                                        </label>
+                                    </div>
+                                    <small class="form-text text-muted">
+                                        If your prediction for this match is correct AND the admin approves your opt-in, you'll earn 2 points instead of 1.
+                                    </small>
+                                @endif
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Gameweek Boost Power-Up (only for gameweek 20+ and if user hasn't used it) --}}
+                    @if($gameweek && $gameweek >= 20)
+                        <div class="card mt-4 bg-light border-warning">
+                            <div class="card-header bg-warning">
+                                <h5 class="mb-0"><i class="fas fa-rocket mr-2"></i>Gameweek Boost</h5>
+                            </div>
+                            <div class="card-body">
+                                @if(!$gameweekBoost)
+                                    {{-- User hasn't used their boost yet --}}
+                                    <div class="alert alert-info mb-3">
+                                        <i class="fas fa-star mr-2"></i>
+                                        <strong>Special Power-Up:</strong> Activate your Gameweek Boost to earn double points on ALL correct predictions this week!
+                                        <br><small>You can only use this once per season!</small>
+                                    </div>
+                                    <div class="custom-control custom-checkbox">
+                                        <input type="checkbox" class="custom-control-input" id="activate_boost" name="activate_boost" value="1">
+                                        <label class="custom-control-label" for="activate_boost">
+                                            <strong>Yes, I want to activate my Gameweek Boost for this week!</strong>
+                                        </label>
+                                    </div>
+                                    <small class="form-text text-muted">
+                                        <i class="fas fa-info-circle"></i> Requires admin approval. If approved, ALL your correct predictions this week will earn 2 points instead of 1.
+                                    </small>
+                                @elseif($gameweekBoost->status === 'pending')
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-clock mr-2"></i>
+                                        <strong>Boost Pending:</strong> Your Gameweek Boost for week {{ $gameweekBoost->week_identifier }} is awaiting admin approval.
+                                    </div>
+                                @elseif($gameweekBoost->status === 'approved')
+                                    <div class="alert alert-success">
+                                        <i class="fas fa-check-circle mr-2"></i>
+                                        <strong>Boost Active:</strong> Your Gameweek Boost was used in week {{ $gameweekBoost->week_identifier }}.
+                                        @if($gameweekBoost->week_identifier === $weekIdentifier)
+                                            <br><span class="badge badge-success">ACTIVE THIS WEEK</span> - All correct predictions earn 2 points!
+                                        @endif
+                                    </div>
+                                @elseif($gameweekBoost->status === 'rejected')
+                                    <div class="alert alert-danger">
+                                        <i class="fas fa-times-circle mr-2"></i>
+                                        <strong>Boost Rejected:</strong> Your Gameweek Boost request was rejected.
+                                        @if($gameweekBoost->rejection_reason)
+                                            <br><small>Reason: {{ $gameweekBoost->rejection_reason }}</small>
+                                        @endif
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    @endif
 
                     <div class="mt-4 text-center">
                         <button type="submit" class="btn btn-success btn-lg"><i class="fas fa-check-circle mr-2"></i>Submit Predictions</button>
@@ -373,4 +455,32 @@
         padding: .5em .8em;
     }
 </style>
+@endpush
+
+@push('js')
+<script>
+$(document).ready(function() {
+    // Handle mutual exclusivity between Gameweek Boost and Double Points
+    const boostCheckbox = $('#activate_boost');
+    const doublePointsCheckbox = $('#opt_in_double_points');
+    const doublePointsCard = doublePointsCheckbox.closest('.card');
+
+    // When Gameweek Boost is checked, uncheck and hide Double Points
+    boostCheckbox.on('change', function() {
+        if (this.checked) {
+            doublePointsCheckbox.prop('checked', false);
+            doublePointsCard.slideUp(300);
+        } else {
+            doublePointsCard.slideDown(300);
+        }
+    });
+
+    // When Double Points is checked, uncheck Gameweek Boost
+    doublePointsCheckbox.on('change', function() {
+        if (this.checked) {
+            boostCheckbox.prop('checked', false);
+        }
+    });
+});
+</script>
 @endpush

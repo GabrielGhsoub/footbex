@@ -13,6 +13,11 @@ class FootballDataService
     protected Client $client;
     protected ?string $apiToken;
 
+    // TESTING MODE: Set to true to use a fixed date with matches
+    // Remember to set back to false when done testing!
+    private bool $testingMode = false;
+    private string $testingDate = '2025-11-29'; // Saturday of week 2025-48 (future week with matches)
+
     public function __construct()
     {
         $this->apiToken = config('services.football-data.token');
@@ -42,7 +47,11 @@ class FootballDataService
      */
     public function getWeeklyMatches(Carbon $referenceDate = null): array
     {
-        if ($referenceDate === null) {
+        // TESTING MODE: Override with fixed date if testing mode is enabled
+        if ($this->testingMode) {
+            $referenceDate = Carbon::parse($this->testingDate);
+            Log::warning('FootballDataService: TESTING MODE ACTIVE - Using fixed date: ' . $referenceDate->toDateString());
+        } elseif ($referenceDate === null) {
             Log::debug('FootballDataService: getWeeklyMatches called with no referenceDate. Defaulting to 1 week ago.');
             $referenceDate = Carbon::now()->subWeeks(1);
         } else {
@@ -115,6 +124,7 @@ class FootballDataService
                             'utcDate' => $m['utcDate'],
                             'date' => $utc->toDateString(),
                             'time' => $utc->format('H:i'),
+                            'matchday' => $m['matchday'] ?? null, // Actual gameweek number from API
                             'home' => ['id' => $m['homeTeam']['id'] ?? null, 'name' => $m['homeTeam']['name'] ?? 'N/A', 'crest' => $m['homeTeam']['crest'] ?? null],
                             'away' => ['id' => $m['awayTeam']['id'] ?? null, 'name' => $m['awayTeam']['name'] ?? 'N/A', 'crest' => $m['awayTeam']['crest'] ?? null],
                             'status' => ['value' => $m['status'], 'finished' => $m['status'] === 'FINISHED', 'scoreStr' => $scoreStr],
@@ -148,5 +158,42 @@ class FootballDataService
                 return null;
             }
         });
+    }
+
+    /**
+     * Get the next upcoming gameweek number by looking ahead in the schedule.
+     * Used during international breaks when current week has no matches.
+     */
+    public function getNextGameweek(Carbon $referenceDate): ?int
+    {
+        if (empty($this->apiToken)) {
+            return null;
+        }
+
+        try {
+            // Look ahead up to 4 weeks to find the next gameweek
+            $dateFrom = $referenceDate->copy()->toDateString();
+            $dateTo = $referenceDate->copy()->addWeeks(4)->toDateString();
+
+            $response = $this->client->get('competitions/PL/matches', [
+                'query' => [
+                    'dateFrom' => $dateFrom,
+                    'dateTo' => $dateTo,
+                    'status' => 'SCHEDULED,TIMED' // Only future matches
+                ],
+            ]);
+
+            $body = json_decode($response->getBody()->getContents(), true);
+
+            if (isset($body['matches']) && !empty($body['matches'])) {
+                // Return the matchday of the first upcoming match
+                return $body['matches'][0]['matchday'] ?? null;
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch next gameweek', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 }
